@@ -25,8 +25,10 @@ h1{margin:0;font-family:var(--serif);font-size:28px;font-weight:700}
 h2{margin:0;font-family:var(--serif);font-size:20px;font-weight:600}
 .pill{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;background:var(--sand);font-size:13px;color:var(--ink2)}
 .sim{background:#1e2421;color:#f4f0e6}
-.pond{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1f3320;background:#cfe0b8;aspect-ratio:350/142}
-.pond svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pond{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1c1a24;background:#e9e2d2;aspect-ratio:192/120}
+.pond canvas{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+.pond-labels{position:absolute;left:8px;right:8px;top:6px;display:flex;justify-content:space-between;font:8px/12px "Press Start 2P",monospace;color:#1f3320;pointer-events:none}
+.pond-labels span{background:rgba(255,255,255,.75);padding:2px 4px;border-radius:4px}
 .pet{position:absolute;padding:0;border:0;background:transparent;cursor:pointer;border-radius:8px}
 .pet:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 .seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:5px;border-radius:16px;background:var(--sand)}
@@ -99,7 +101,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   </header>
 
   <div class="pond" id="pond">
-    <svg id="scene" viewBox="0 0 350 142" shape-rendering="crispEdges" role="img" aria-label="The pond: the two ducks walking about"></svg>
   </div>
   <p class="offline" id="offline" hidden>The Nest isn't answering. Is the Jetson on?</p>
   <p class="quietbar" id="quiet" role="status" hidden>
@@ -189,6 +190,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   </div>
 </nav>
 
+<script src="/static/pond-scene.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -405,185 +407,6 @@ $("log").addEventListener("click", async () => {
   refresh();
 });
 
-// ── the 8-bit pond ───────────────────────────────────────────────────────────
-// Two of the real Microduck colourways; a third and fourth duck would get the others.
-const LOOKS = [
-  {shell: "#8fd3e3", shade: "#62aec2", ring: "#f5a31a", beak: "#ee6a2a", foot: "#ee6a2a", sole: "#f2c14e"},
-  {shell: "#c3b1e6", shade: "#9a84cc", ring: "#6fc3e6", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
-  {shell: "#5f6366", shade: "#44484b", ring: "#8a68c8", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
-  {shell: "#efebe3", shade: "#cfc8ba", ring: "#f5a31a", beak: "#ee6a2a", foot: "#f5a31a", sole: "#ee6a2a"},
-];
-const LEGS = [
-  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM3 16h2v1h-2zM9 16h3v1h-3zM2 17h3v1h-3zM10 17h2v1h-2z", joint: "M5 15h4v1h-4zM3 18h1v1h-1zM11 18h1v1h-1z", feet: "M2 19h3v1h-3zM10 19h3v1h-3z", soles: "M2 20h4v1h-4zM10 20h4v1h-4z"},
-  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM4 16h2v1h-2zM8 16h2v1h-2zM4 17h2v1h-2zM8 17h2v1h-2z", joint: "M5 15h4v1h-4zM5 18h1v1h-1zM8 18h1v1h-1zM8 19h1v1h-1z", feet: "M10 18h3v1h-3zM4 19h3v1h-3z", soles: "M10 19h3v1h-3zM4 20h4v1h-4z"},
-];
-const ICONS = {
-  heart: {w: 7, h: 6, fill: "#c8324a", d: "M1 0h2v1h-2zM4 0h2v1h-2zM0 1h7v1h-7zM0 2h7v1h-7zM1 3h5v1h-5zM2 4h3v1h-3zM3 5h1v1h-1z"},
-  zzz: {w: 7, h: 7, fill: "#2d4f7c", d: "M0 0h4v1h-4zM2 1h1v1h-1zM1 2h1v1h-1zM0 3h7v1h-7zM4 4h1v1h-1zM3 5h1v1h-1zM2 6h4v1h-4z"},
-  bang: {w: 5, h: 6, fill: "#1e2421", d: "M2 0h1v1h-1zM2 1h1v1h-1zM2 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
-  ask: {w: 5, h: 6, fill: "#1e2421", d: "M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM3 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
-  note: {w: 6, h: 6, fill: "#1e2421", d: "M2 0h4v1h-4zM2 1h1v1h-1zM5 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM1 3h2v1h-2zM4 3h2v1h-2zM0 4h3v1h-3zM4 4h2v1h-2zM0 5h2v1h-2z"},
-};
-const MOODS = {high: ["note", "bang", "ask", "note", "heart"], medium: ["note", "ask", "bang"],
-  low: ["zzz", "ask", "note"], very_low: ["zzz", "zzz", "ask"], charging: ["zzz"], unknown: ["ask"]};
-const REST = {high: 0.008, medium: 0.012, low: 0.03, very_low: 0.06, charging: 1, unknown: 0.02};
-
-function background() {
-  let tufts = "";
-  for (let x = 3; x < 175; x += 11) tufts += `M${x} 61h1v1h-1zM${x - 1} 61h3v1h-3z`;
-  for (let x = 8; x < 175; x += 17) tufts += `M${x} 60h1v2h-1zM${x + 2} 61h1v1h-1z`;
-  const cloud = "M4 0h4v1h-4zM2 1h8v1h-8zM12 1h3v1h-3zM1 2h15v1h-15zM2 3h12v1h-12z";
-  return `<g transform="scale(2)">
-    <path fill="#cfe0b8" d="M0 0h175v71h-175z"/><path fill="#e3eed4" d="M0 0h175v30h-175z"/>
-    <path fill="#b7cf9c" d="M0 44h14v1h-14zM0 43h8v1h-8zM30 42h26v3h-26zM36 41h14v1h-14zM120 43h30v2h-30zM126 42h16v1h-16z"/>
-    <path fill="#f2c14e" transform="translate(84 6)" d="M2 0h1v1h-1zM5 0h1v1h-1zM3 1h2v1h-2zM1 2h6v1h-6zM0 3h8v1h-8zM1 4h6v1h-6zM3 5h2v1h-2zM2 6h1v1h-1zM5 6h1v1h-1z"/>
-    <path id="cloudA" fill="#ffffff" d="${cloud}"/><path id="cloudB" fill="#f5f9ef" d="${cloud}"/>
-    <path fill="#9fbd84" d="M0 63h175v8h-175z"/><path fill="#3f6b2f" d="M0 62h175v1h-175z"/>
-    <path fill="#5f8a45" d="${tufts}"/>
-    <path fill="#86a86a" d="M3 66h2v1h-2zM17 68h1v1h-1zM31 65h2v1h-2zM48 67h1v1h-1zM62 69h2v1h-2zM77 66h1v1h-1zM93 68h2v1h-2zM104 65h1v1h-1z"/>
-    <path fill="#e27d9a" d="M20 60h1v1h-1zM19 61h3v1h-3zM70 60h1v1h-1zM69 61h3v1h-3z"/>
-    <path fill="#f7f3ea" d="M44 61h1v1h-1zM43 60h1v1h-1zM45 60h1v1h-1z"/>
-    <g transform="translate(113 51)">
-      <path fill="#7a5a3a" d="M51 0h2v1h-2zM50 1h4v1h-4zM6 2h1v1h-1zM50 2h4v1h-4zM5 3h3v1h-3zM51 3h2v1h-2zM5 4h3v1h-3z"/>
-      <path fill="#4f7f39" d="M49 3h1v1h-1zM49 4h1v1h-1zM52 4h1v1h-1zM6 5h1v1h-1zM50 5h1v1h-1zM52 5h1v1h-1zM6 6h1v1h-1zM50 6h1v1h-1zM52 6h1v1h-1zM6 7h1v1h-1zM50 7h1v1h-1zM52 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM50 8h1v1h-1zM52 8h1v1h-1zM5 9h2v1h-2zM49 9h3v1h-3z"/>
-      <path fill="#2f5226" d="M11 6h33v1h-33zM9 7h2v1h-2zM44 7h2v1h-2zM8 8h1v1h-1zM46 8h1v1h-1zM7 9h1v1h-1zM47 9h1v1h-1zM6 10h1v1h-1zM48 10h1v1h-1zM5 11h1v1h-1zM49 11h1v1h-1zM5 12h1v1h-1zM49 12h1v1h-1zM6 13h1v1h-1zM49 13h1v1h-1zM7 14h2v1h-2zM47 14h2v1h-2zM9 15h6v1h-6zM43 15h4v1h-4zM15 16h28v1h-28z"/>
-      <path fill="#4f86ad" d="M11 7h33v1h-33zM9 8h3v1h-3zM15 8h8v1h-8zM27 8h13v1h-13zM43 8h3v1h-3zM8 9h10v1h-10zM20 9h3v1h-3zM28 9h19v1h-19zM7 10h4v1h-4zM14 10h10v1h-10zM28 10h7v1h-7zM38 10h10v1h-10zM6 11h37v1h-37zM45 11h4v1h-4zM6 12h3v1h-3zM12 12h15v1h-15zM30 12h12v1h-12zM46 12h3v1h-3zM7 13h30v1h-30zM39 13h4v1h-4zM45 13h4v1h-4zM9 14h6v1h-6zM18 14h29v1h-29zM15 15h28v1h-28z"/>
-      <path fill="#7fb2d4" d="M12 8h3v1h-3zM40 8h3v1h-3zM11 10h3v1h-3zM27 12h3v1h-3zM15 14h3v1h-3z"/>
-      <path id="ripple" fill="#7fb2d4" d="M18 9h2v1h-2zM35 10h3v1h-3zM9 12h3v1h-3zM37 13h2v1h-2z"/>
-      <path fill="#5c9a3e" d="M23 8h4v1h-4zM23 9h1v1h-1zM25 9h3v1h-3zM24 10h4v1h-4zM43 11h2v1h-2zM42 12h4v1h-4zM43 13h2v1h-2z"/>
-      <path fill="#e27d9a" d="M24 9h1v1h-1z"/>
-      <path fill="#8b8f86" d="M54 8h2v1h-2zM52 9h1v1h-1zM55 9h2v1h-2zM50 10h2v1h-2zM54 10h4v1h-4zM51 11h7v1h-7z"/>
-      <path fill="#b9bdb2" d="M53 9h2v1h-2zM52 10h2v1h-2z"/>
-    </g>
-  </g>
-  <g id="labels" font-family="'Press Start 2P',monospace" font-size="8" fill="#1f3320"></g>
-  <g id="ducks"></g>`;
-}
-
-function sprite(look, pose) {
-  const leg = LEGS[pose.frame];
-  const eye = pose.closed ? "M6 4h4v1h-4z" : pose.happy ? "M6 4h1v1h-1zM7 3h2v1h-2zM9 4h1v1h-1z"
-    : "M7 3h2v1h-2zM6 4h1v1h-1zM8 4h2v1h-2zM7 5h2v1h-2z";
-  return `<path fill="${look.shell}" d="M5 0h6v1h-6zM3 1h10v1h-10zM2 2h2v1h-2zM11 2h3v1h-3zM2 3h1v1h-1zM13 3h1v1h-1zM2 4h1v1h-1zM12 4h2v1h-2zM2 5h2v1h-2zM12 5h2v1h-2zM4 11h7v1h-7zM3 12h9v1h-9zM3 13h7v1h-7z"/>
-    <path fill="${look.shade}" d="M2 6h12v1h-12zM10 13h2v1h-2zM4 14h7v1h-7z"/>
-    <path fill="#eceeea" d="M4 2h7v1h-7zM3 3h9v1h-9zM3 4h9v1h-9zM4 5h8v1h-8z"/>
-    <path fill="${look.ring}" d="M5 2h5v1h-5z"/>
-    ${pose.happy ? '<path fill="#f4a6b8" d="M4 5h1v1h-1zM10 5h1v1h-1z"/>' : ""}
-    <path fill="#1b1d1c" d="${eye}"/>
-    ${pose.closed || pose.happy ? "" : '<path fill="#ffffff" d="M7 4h1v1h-1z"/>'}
-    <path fill="${pose.light}" d="M12 3h1v1h-1z"/>
-    <path fill="#1b1d1c" d="M6 8h2v1h-2zM5 9h3v1h-3zM6 10h3v1h-3z"/>
-    <path fill="${look.beak}" d="${pose.beakOpen ? "M3 7h12v1h-12zM5 8h9v1h-9z" : "M3 7h12v1h-12z"}"/>
-    <path fill="${look.shell}" d="${leg.thigh}"/><path fill="#1b1d1c" d="${leg.joint}"/>
-    <path fill="${look.foot}" d="${leg.feet}"/><path fill="${look.sole}" d="${leg.soles}"/>`;
-}
-
-const pond = {t: 0, near: false, cooldown: 0, ducks: {}, petButtons: {}};
-const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-$("scene").innerHTML = background();
-
-function pondDuck(name, i) {
-  if (!pond.ducks[name]) {
-    pond.ducks[name] = {x: 30 + 120 * i, dir: i ? -1 : 1, frame: 0, emote: null, emoteT: 0, restT: 0,
-                        last: null, beakT: 0, blinkT: 0, told: false, look: LOOKS[i % LOOKS.length]};
-    const b = document.createElement("button");
-    b.className = "pet";
-    b.setAttribute("aria-label", "Pet " + title(name) + " on the screen");
-    b.addEventListener("click", () => emote(pond.ducks[name], "heart", 14));
-    $("pond").appendChild(b);
-    pond.petButtons[name] = b;
-  }
-  return pond.ducks[name];
-}
-function emote(d, kind, ticks) { d.emote = kind; d.emoteT = ticks; d.last = kind; d.beakT = kind === "note" ? ticks : 3; }
-
-function pondTick() {
-  if (!S) return;
-  pond.t += 1;
-  const names = Object.keys(S.ducks);
-  names.forEach((name, i) => {
-    const d = pondDuck(name, i), real = S.ducks[name];
-    const band = real.tiredness in MOODS ? real.tiredness : "unknown";
-    const sleeping = real.asleep || band === "charging" || (S.quiet && S.quiet.now);
-    d.offline = !real.connected;
-    if (d.beakT > 0) d.beakT -= 1;
-    if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
-    // Something real happened: it just told its friend something.
-    if (real.just_told && !d.told) emote(d, "bang", 14);
-    d.told = !!real.just_told;
-    if (d.emoteT > 0) { d.emoteT -= 1; if (d.emoteT === 0) d.emote = null; return; }
-    if (sleeping || d.offline || real.paused) {
-      d.frame = 0;
-      if (Math.random() < 0.01) emote(d, sleeping ? "zzz" : "ask", 18);
-      return;
-    }
-    if (d.restT > 0) { d.restT -= 1; d.frame = 0; return; }
-    // Where Reachy sees it in the room, if it can; otherwise it wanders.
-    let target = null;
-    if (real.room_xy) target = Math.max(4, Math.min(176, real.room_xy[0] / 5 * 176));
-    if (target != null && Math.abs(target - d.x) < 4) { d.frame = 0; }
-    else {
-      if (target != null) d.dir = target > d.x ? 1 : -1;
-      else if (Math.random() < 0.015) d.dir = -d.dir;
-      d.frame = 1 - d.frame;
-      d.x += d.dir * 3;
-      if (d.x < 4) { d.x = 4; d.dir = 1; }
-      if (d.x > 176) { d.x = 176; d.dir = -1; }
-    }
-    if (Math.random() < REST[band]) d.restT = 15 + Math.floor(Math.random() * 25);
-    if (Math.random() < 0.0055) {
-      const choices = MOODS[band].filter((m) => m !== d.last);
-      emote(d, choices[Math.floor(Math.random() * choices.length)] || MOODS[band][0], 16);
-    }
-  });
-  // A greeting only when they first meet, at most once every ~40 s, and not always a heart.
-  const [a, b] = names.slice(0, 2).map((n) => pond.ducks[n]);
-  pond.cooldown = Math.max(0, pond.cooldown - 1);
-  if (a && b) {
-    const near = Math.abs(a.x - b.x) < 44;
-    if (near && !pond.near && pond.cooldown === 0 && !a.emote && !b.emote && !a.offline && !b.offline) {
-      a.dir = b.x >= a.x ? 1 : -1; b.dir = -a.dir;
-      if (Math.random() < 0.45) { emote(a, "heart", 16); emote(b, "heart", 16); }
-      else { emote(a, "note", 12); a.restT = 6; b.restT = 10; }
-      pond.cooldown = 235;
-    }
-    pond.near = near;
-  }
-  drawPond();
-}
-
-function drawPond() {
-  const names = Object.keys(S.ducks);
-  const t = pond.t;
-  $("cloudA").setAttribute("transform", `translate(${((Math.floor(t / 6) + 20) % 200) - 20} 12)`);
-  $("cloudB").setAttribute("transform", `translate(${((Math.floor(t / 9) + 120) % 200) - 20} 22)`);
-  $("ripple").setAttribute("fill", Math.floor(t / 4) % 2 ? "#bfe0f0" : "#7fb2d4");
-  const labels = names.slice(0, 2).map((n, i) => {
-    const pct = S.ducks[n].battery_percent == null ? "--" : Math.round(S.ducks[n].battery_percent) + "%";
-    const text = esc(title(n).toUpperCase()) + " " + pct;
-    return i === 0 ? `<text x="10" y="18">${text}</text>` : `<text x="340" y="18" text-anchor="end">${text}</text>`;
-  }).join("");
-  put($("labels"), labels);
-  const scale = $("pond").clientWidth / 350;  // the scene fills the pond's inner box
-  $("ducks").innerHTML = names.map((name, i) => {
-    const d = pondDuck(name, i), real = S.ducks[name];
-    const y = 142 - 16 - 63 - (d.frame ? 2 : 0);
-    const pose = {frame: d.frame, closed: d.emote === "zzz" || d.blinkT > 0 || real.asleep || real.tiredness === "charging" || (S.quiet && S.quiet.now),
-                  happy: d.emote === "heart" || d.emote === "note", beakOpen: d.beakT > 0 && d.beakT % 2 === 1,
-                  light: (t + i * 3) % 8 < 4 ? "#e2474b" : "#4a8fd9"};
-    const flip = d.dir < 0 ? `translate(${d.x + 48} ${y}) scale(-3 3)` : `translate(${d.x} ${y}) scale(3)`;
-    let bubble = "";
-    if (d.emote) {
-      const ic = ICONS[d.emote];
-      bubble = `<path fill="${ic.fill}" transform="translate(${d.x + 24 - ic.w * 2} ${y - 4 - ic.h * 4}) scale(4)" d="${ic.d}"/>`;
-    }
-    const pet = pond.petButtons[name];
-    if (pet) Object.assign(pet.style, {left: d.x * scale + "px", top: y * scale + "px",
-                                       width: 48 * scale + "px", height: 63 * scale + "px"});
-    return `<g opacity="${d.offline ? 0.45 : 1}"><g transform="${flip}">${sprite(d.look, pose)}</g>${bubble}</g>`;
-  }).join("");
-}
-
 // ── polling ──────────────────────────────────────────────────────────────────
 function renderAll() {
   if (!S) return;
@@ -597,7 +420,6 @@ function renderAll() {
     : "";
   $("reachy").classList.toggle("sim", !!S.sim);
   if (S.sim) $("reachy-text").textContent += " · SIMULATION";
-  names.forEach(pondDuck);
   renderCare(); renderSaw(); renderNight();
 }
 async function refresh() {
@@ -606,13 +428,15 @@ async function refresh() {
     S = await r.json();
     $("offline").hidden = true;
     renderAll();
-    if (reduceMotion) drawPond();
+    if (reduceMotion) PondScene.draw(S);
   } catch (e) { $("offline").hidden = false; }
 }
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+PondScene.init($("pond"));
 refresh();
 setInterval(refresh, 1500);
-if (!reduceMotion) setInterval(pondTick, 170);
-window.addEventListener("resize", () => S && drawPond());
+if (!reduceMotion) setInterval(() => PondScene.tick(S), 170);
+window.addEventListener("resize", () => S && PondScene.draw(S));
 </script>
 </body>
 </html>

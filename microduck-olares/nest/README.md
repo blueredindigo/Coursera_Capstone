@@ -27,7 +27,7 @@ the green chair near the sofa" and watch the message reach Tee-Tee when they are
 | 1 Talk to everyone | **Duck:** JSON-RPC over the duck's own LAN WebRTC `control` channel (same handshake as its console page), plus `GET /frame`. **Reachy Lite:** its REST API on `localhost:8000` | unit tests, and a WebRTC handshake against a stand-in for the duck's `mediad` |
 | 2 Seeing the room | Pollen's duck detector (ONNX) on Reachy's camera, floor calibration, a two-duck tracker with roll call, a navigator that learns each duck's odometry offset | the real detector model runs through the wrapper; tracker, homography and navigator unit-tested |
 | 3 Spine and tiredness | needs, personality, the battery → tiredness gauge (with charging detection), behaviours, the safety gate, pit stops and the battery diary, bedtime and wake-up | unit tests and the simulated house |
-| 4 The Pond | the phone page from the Claude Design canvas: an 8-bit pond with Ah-Ah and Tee-Tee walking and showing moods from their real state, then **Care** (energy, mood, six things to ask a duck), **Saw & find** (sentence-builder sightings, where is it?) and **Night** (bedtime, pit stops, battery health). Fonts are bundled, so it needs no internet | in simulation, by screenshot at phone width, and a test for the page and each action |
+| 4 The Pond | the phone page from the Claude Design canvas: an isometric pixel-art room (voxel sprites, outlines, shadows) where Ah-Ah and Tee-Tee roam, chase the ball, peek behind the green chair and sleep in their beds, following their real state, then **Care** (energy, mood, six things to ask a duck), **Saw & find** (sentence-builder sightings, where is it?) and **Night** (bedtime, pit stops, battery health). Fonts are bundled, so it needs no internet | in simulation, by screenshot at phone width, and a test for the page and each action |
 | 5 Memory and food | landmark memory, the Duckdex ("curiosity is food"), and a local vision captioner (Ollama) that turns snapshots into sightings | unit tests; the captioner has not met a real model yet |
 | 6 Telling each other | the duck bus with the earshot rule, 9-byte messages, chirp-phrase performance, investigate-the-rumour | the full "yellow ball" story in the simulated house |
 
@@ -51,7 +51,8 @@ nest/
   vision/      duck_detector (ONNX), captioner (Ollama)
   bus.py       the duck bus and the earshot rule
   batteries.py pit stops and battery health
-  app.py       wires it all together; web.py serves the Pond (static/pond.html, static/fonts)
+  app.py       wires it all together; web.py serves the Pond (static/pond.html, the
+               isometric room in static/pond-scene.js, static/fonts)
   sim.py       the simulated living room
   calibrate.py floor calibration for Reachy's view
 ```

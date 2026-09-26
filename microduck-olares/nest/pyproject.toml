@@ -30,7 +30,7 @@ build-backend = "setuptools.build_meta"
 include = ["nest*"]
 
 [tool.setuptools.package-data]
-nest = ["static/*.html", "static/fonts/*"]
+nest = ["static/*.html", "static/*.js", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

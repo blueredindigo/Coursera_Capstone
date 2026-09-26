@@ -182,6 +182,8 @@ def test_the_pond_page_and_the_duck_actions(tmp_path):
     page = client.get("/")
     assert page.status_code == 200 and "The Pond" in page.text
     assert "fonts.googleapis" not in page.text  # everything is served locally
+    scene = client.get("/static/pond-scene.js")
+    assert scene.status_code == 200 and "PondScene" in scene.text  # the isometric room
     font = client.get("/static/fonts/pressstart2p.woff2")
     assert font.status_code == 200 and font.content[:4] == b"wOF2"
 
