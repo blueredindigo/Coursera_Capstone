@@ -339,24 +339,51 @@
     // Screen-facing directions: 0 SE (+x), 1 SW (+y), 2 NW (-x), 3 NE (-y).
     return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy > 0 ? 1 : 3);
   }
+  // Returns "arrived", "moving", or "blocked" (furniture or the other duck in the way).
   function stepTowards(d, goal, speed) {
     const dx = goal.gx - d.gx, dy = goal.gy - d.gy, dist = Math.hypot(dx, dy);
-    if (dist < 0.15) return true;
-    // Walk along one axis at a time, like a little robot on a grid.
-    const axisX = Math.abs(dx) > 0.12 && (Math.abs(dx) >= Math.abs(dy) || Math.abs(dy) <= 0.12);
-    const nx = d.gx + (axisX ? Math.sign(dx) * Math.min(speed, Math.abs(dx)) : 0);
-    const ny = d.gy + (!axisX ? Math.sign(dy) * Math.min(speed, Math.abs(dy)) : 0);
-    d.dir = dirTowards(nx - d.gx, ny - d.gy);
-    if (!free(nx, ny)) { d.target = null; return true; }  // bumped into furniture: rethink
-    // Personal space: never walk into the other duck; stop beside it instead.
-    for (const other of Object.values(scene.ducks)) {
-      if (other !== d && Math.hypot(other.gx - nx, other.gy - ny) < 1.0 &&
-          Math.hypot(other.gx - nx, other.gy - ny) < Math.hypot(other.gx - d.gx, other.gy - d.gy)) {
-        d.target = null; return true;
-      }
+    if (dist < 0.15) return "arrived";
+    // Walk along one axis at a time, like a little robot on a grid; if the longer axis is
+    // blocked, try the other one before giving up.
+    const xFirst = Math.abs(dx) >= Math.abs(dy);
+    const axes = [xFirst, !xFirst].filter((ax) => Math.abs(ax ? dx : dy) > 0.12);
+    if (!axes.length) axes.push(xFirst);
+    for (const axisX of axes) {
+      const nx = d.gx + (axisX ? Math.sign(dx) * Math.min(speed, Math.abs(dx)) : 0);
+      const ny = d.gy + (!axisX ? Math.sign(dy) * Math.min(speed, Math.abs(dy)) : 0);
+      if (!free(nx, ny) || crowding(d, nx, ny)) continue;
+      d.dir = dirTowards(nx - d.gx, ny - d.gy);
+      d.gx = nx; d.gy = ny; d.frame = 1 - d.frame;
+      return "moving";
     }
-    d.gx = nx; d.gy = ny; d.frame = 1 - d.frame;
-    return false;
+    return "blocked";
+  }
+  // Personal space: never walk into the other duck; stop beside it instead.
+  function crowding(d, nx, ny) {
+    return Object.values(scene.ducks).some((other) => other !== d &&
+      Math.hypot(other.gx - nx, other.gy - ny) < 1.0 &&
+      Math.hypot(other.gx - nx, other.gy - ny) < Math.hypot(other.gx - d.gx, other.gy - d.gy));
+  }
+  // Walk towards a goal, stepping around whatever is in the way. True once there.
+  function walkTo(d, goal, speed) {
+    if (d.detour) {
+      if (stepTowards(d, d.detour, speed) !== "moving") d.detour = null;
+      return false;
+    }
+    const r = stepTowards(d, goal, speed);
+    if (r === "blocked") {
+      // Head for a free spot on the way round, then try again from there.
+      d.detour = randomFreeTileNear(d, 2.5);
+      d.frame = 0;
+    }
+    return r === "arrived";
+  }
+  function randomFreeTileNear(d, r) {
+    for (let k = 0; k < 30; k++) {
+      const gx = d.gx + (Math.random() - 0.5) * 2 * r, gy = d.gy + (Math.random() - 0.5) * 2 * r;
+      if (free(gx, gy)) return {gx, gy};
+    }
+    return randomFreeTile();
   }
 
   function tick(S) {
@@ -367,6 +394,7 @@
     names.forEach((name, i) => {
       const d = duckState(name, i), real = S.ducks[name];
       d.offline = !real.connected;
+      d.paused = !!real.paused;
       if (d.beakT > 0) d.beakT -= 1;
       if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
       if (d.kickCool > 0) d.kickCool -= 1;
@@ -389,6 +417,7 @@
       else if (["come_here", "call_out"].includes(b)) { mode = "front"; goal = LAYOUT.front; }
       else if (b === "investigate" || d.peekT > 0) { mode = "peek"; goal = {gx: LAYOUT.chair.gx + 1.6, gy: LAYOUT.chair.gy + 0.4}; }
       else if (["look_around", "show_something"].includes(b)) { mode = "look"; }
+      if (mode !== d.mode) d.detour = null;
       d.mode = mode;
       if (d.peekT > 0) d.peekT -= 1;
       if (d.chaseT > 0) d.chaseT -= 1;
@@ -399,8 +428,7 @@
         if (scene.t % 8 === 0) d.dir = (d.dir + 1) % 4;
         if (!d.emote && Math.random() < 0.01) emote(d, "ask", 14);
       } else if (goal) {
-        const arrived = stepTowards(d, goal, speed);
-        if (arrived) {
+        if (walkTo(d, goal, speed)) {
           d.frame = 0;
           if (mode === "bed") { d.dir = 0; if (!d.emote && Math.random() < 0.03) emote(d, "zzz", 24); }
           if (mode === "front") d.dir = 1;
@@ -412,7 +440,9 @@
         if (d.idleT > 0) { d.idleT -= 1; d.frame = 0; }
         else {
           if (!d.target) d.target = randomFreeTile();
-          if (stepTowards(d, d.target, speed)) { d.target = null; d.idleT = 10 + ((Math.random() * 30) | 0); }
+          const r = stepTowards(d, d.target, speed);
+          if (r === "arrived") { d.target = null; d.idleT = 10 + ((Math.random() * 30) | 0); }
+          else if (r === "blocked") { d.target = null; d.frame = 0; }   // rethink where to go
         }
         const pool = {high: ["note", "bang", "ask", "note", "heart"], medium: ["note", "ask", "bang"],
                       low: ["zzz", "ask", "note"]}[band] || ["ask"];
@@ -445,6 +475,10 @@
     }
     draw(S);
   }
+
+  // A duck that's switched off, paused or in bed (asleep, charging, tired, quiet hours)
+  // doesn't get up to chase the ball or peek behind the chair.
+  function canPlay(d) { return !d.offline && !d.paused && d.mode !== "bed"; }
 
   function kickBall(d, strength) {
     const angle = [0, Math.PI / 2, Math.PI, -Math.PI / 2][d ? d.dir : (Math.random() * 4) | 0] + (Math.random() - 0.5) * 0.9;
@@ -492,6 +526,7 @@
       place("chair", sx - 12, sy - 34, 24, 38);
     }});
     const names = Object.keys(S.ducks);
+    names.forEach((name, i) => duckState(name, i));   // with reduced motion, tick() never runs
     names.forEach((name, i) => {
       const bed = LAYOUT.beds[i % LAYOUT.beds.length];
       things.push({depth: bed.gx + bed.gy + 0.2, draw: () => blit(g, prop("bed" + i, () => bedModel(LOOKS[i % LOOKS.length].shade)), bed.gx, bed.gy)});
@@ -565,12 +600,12 @@
       addButton("ball", "Kick the ball", () => {
         kickBall(null, 0.45);
         // the nearest awake duck gives chase
-        const awake = Object.values(scene.ducks).filter((d) => !d.offline);
+        const awake = Object.values(scene.ducks).filter(canPlay);
         const near = awake.sort((a, b) => Math.hypot(a.gx - scene.ball.gx, a.gy - scene.ball.gy) - Math.hypot(b.gx - scene.ball.gx, b.gy - scene.ball.gy))[0];
         if (near) near.chaseT = 35;   // about 6 s of chasing, then back to what it was doing
       });
       addButton("chair", "Look behind the green chair", () => {
-        const awake = Object.values(scene.ducks).filter((d) => !d.offline);
+        const awake = Object.values(scene.ducks).filter(canPlay);
         const d = awake[(Math.random() * awake.length) | 0];
         if (d) d.peekT = 40;
       });
