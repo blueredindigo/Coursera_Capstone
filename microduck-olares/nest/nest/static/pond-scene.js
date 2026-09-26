@@ -312,7 +312,7 @@
       const bed = LAYOUT.beds[i % LAYOUT.beds.length];
       scene.ducks[name] = {i, name, gx: 2 + i * 3.5, gy: 2.5 + i * 1.5, dir: i ? 1 : 0, frame: 0, target: null,
                            emote: null, emoteT: 0, last: null, beakT: 0, blinkT: 0, idleT: 0,
-                           told: false, bed, mode: "roam", peekT: 0, kickCool: 0};
+                           told: false, bed, mode: "roam", peekT: 0, chaseT: 0, kickCool: 0};
       addButton(name, "Pet " + title(name) + " on the screen", () => emote(scene.ducks[name], "heart", 14));
     }
     return scene.ducks[name];
@@ -381,7 +381,7 @@
       // What the real duck is doing decides where the little one goes.
       let goal = null, mode = "roam";
       if (sleepy || ["go_to_bed", "rest", "nap"].includes(b) || band === "very_low") { mode = "bed"; goal = {gx: d.bed.gx + 0.6, gy: d.bed.gy + 0.6}; }
-      else if (b === "play" || d.mode === "chase") { mode = "chase"; goal = {gx: scene.ball.gx, gy: scene.ball.gy}; }
+      else if (b === "play" || d.chaseT > 0) { mode = "chase"; goal = {gx: scene.ball.gx, gy: scene.ball.gy}; }
       else if (["seek_friend", "greet_friend"].includes(b)) {
         const other = scene.ducks[names.find((n) => n !== name)];
         if (other) { mode = "friend"; goal = {gx: other.gx + (other.gx > d.gx ? -0.9 : 0.9), gy: other.gy}; }
@@ -391,6 +391,7 @@
       else if (["look_around", "show_something"].includes(b)) { mode = "look"; }
       d.mode = mode;
       if (d.peekT > 0) d.peekT -= 1;
+      if (d.chaseT > 0) d.chaseT -= 1;
 
       const speed = 0.11;
       if (mode === "look") {
@@ -566,7 +567,7 @@
         // the nearest awake duck gives chase
         const awake = Object.values(scene.ducks).filter((d) => !d.offline);
         const near = awake.sort((a, b) => Math.hypot(a.gx - scene.ball.gx, a.gy - scene.ball.gy) - Math.hypot(b.gx - scene.ball.gx, b.gy - scene.ball.gy))[0];
-        if (near) { near.mode = "chase"; setTimeout(() => { if (near.mode === "chase") near.mode = "roam"; }, 6000); }
+        if (near) near.chaseT = 35;   // about 6 s of chasing, then back to what it was doing
       });
       addButton("chair", "Look behind the green chair", () => {
         const awake = Object.values(scene.ducks).filter((d) => !d.offline);
