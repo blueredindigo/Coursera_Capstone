@@ -22,7 +22,7 @@ Ground rules:
    you know to charge it without opening an app.
 5. **Quiet at night.** Olares can idle. The always-on work runs on the silent Jetson.
 6. **Foundation first.** Human speech (talking to the ducks, the ducks talking to you) is
-   **parked** until the foundation below works well (§10).
+   **parked** until the foundation below works well (§12).
 
 ---
 
@@ -74,9 +74,15 @@ It doesn't walk, but from the TV stand it sees and hears the whole living room, 
 | Speaker, raw audio in and out | `play_sound`, `push_audio_sample`, `get_audio_sample` | the first node that can do data-over-sound today (§6) |
 | REST + WebSocket API | `http://<reachy>:8000/api`, Swagger at `/docs` | the Jetson drives it without running code on the robot |
 
-Its SDK connects over the network with `ReachyMini(host="reachy-mini.local",
-connection_mode="network")`. If yours is the **Wireless** model, the Jetson talks to it over
-Wi-Fi. If it's the **Lite**, plug its USB into the Jetson and the Jetson becomes its computer.
+**Yours is the Lite**, so it has no computer of its own: it's a USB-C device (120° 12 MP
+camera, a 4-mic XVF3800 array with direction of arrival, a 5 W speaker) powered from its own
+supply. **Plug it into the Jetson, which becomes its brain**, and put the Jetson on the TV stand
+beside it. Its docs name Jetson among the ARM64 systems where the desktop app may not work, so
+install the **Python SDK** directly on the Jetson (`pip install reachy-mini` plus GStreamer, per
+its installation guide) and run the daemon there. Everything then stays on one machine, with no
+Wi-Fi hop for Reachy's camera or audio, and `localhost:8000` is its API.
+
+The TV stand becomes **the Nest**: Reachy, the Jetson, and both ducks' chargers and "beds".
 
 ### The Jetson Orin Nano Super, the always-on mind
 
@@ -126,7 +132,7 @@ LarePass.
 │ landmark map · duck bus (earshot rule) · safety supervisor   │
 │ ggwave encode/decode                                          │
 └───▲──────────────────────────▲───────────────────────────▲───┘
-    │ REST/WS :8000             │ JSON-RPC + /frame          │ JSON-RPC + /frame
+    │ USB-C (Lite, localhost)   │ JSON-RPC + /frame          │ JSON-RPC + /frame
 ┌───┴──────── Reachy Mini ──┐ ┌─┴────────── Ah-Ah ──────┐ ┌──┴───────── Tee-Tee ─────┐
 │ room camera · mic array   │ │ robotd 50 Hz · safety · │ │ robotd 50 Hz · safety ·  │
 │ + direction of arrival ·  │ │ pet-detect · tofd ·     │ │ pet-detect · tofd ·      │
@@ -366,14 +372,118 @@ rollback are what make it safe to keep trying.
 
 ---
 
-## 9. Build plan: foundation first
+## 9. Field trips: exploring outside and coming home to tell
+
+**Yes, it's possible**, as *supervised outings* with you, not as a duck roaming the
+neighbourhood alone. It stays LAN-only: outside there's no internet involved at all. The duck
+records its trip, and when it's back on the home Wi-Fi it hands everything over. Olares
+processes it, and the whole household hears about it.
+
+### Why it has to be supervised
+
+- **Terrain.** Its policies are trained for indoor floors. Grass, gravel, kerbs and slopes are
+  hard for a 25 cm biped. Roller mode (`robot.mode`, wheels on) is the better choice on smooth
+  pavement.
+- **Its brain stays home.** The spine runs on the Jetson, so outside the duck only has its
+  on-board reflexes. **The gamepad still works**: it pairs straight to the duck over Bluetooth
+  with no network, so you can always take over.
+- **The world.** No waterproofing, dust and grit in the servos, heat and cold on the battery,
+  dogs, bikes, traffic, and people who'd happily pocket a cute robot.
+- **Privacy.** It will photograph strangers and their houses. Keep the footage local, blur
+  faces when it's processed, and don't publish it.
+
+### Two ways to do it
+
+**Tier 1, "Walkies" (start here).** You walk it or drive it with the gamepad, and carry it
+across anything risky. A small recorder on the duck saves a frame every few seconds plus
+odometry, IMU, ToF and fall events to its SD card. `mediad` already serves frames on a local
+socket (`media.frame` on `/run/mediad/media.sock`) for exactly this kind of local recorder.
+Install the recorder as its own service, and check it survives a Microduck update, since the
+updater only owns its own daemons.
+
+**Tier 2, "Expedition kit" (later).** Take the duck's home network with you in a small bag:
+- a travel router broadcasting a Wi-Fi network the duck knows
+  (`sudo robotctl net connect <ssid>` once at home);
+- the Jetson Orin Nano Super on a power bank with the right DC or USB-C PD output;
+- optionally a USB GPS dongle on the Jetson.
+
+Now the duck has its whole mind with it outside: detection, captions and the spine, still
+without the internet. At home, the Olares box runs a **backup copy of the spine** (it's just a
+container) so the stay-home duck keeps its needs and moods. Reachy Lite has no computer while
+the Jetson is out, so it "waits by the door" in its sleep pose. That's thematically perfect.
+
+### Coming home
+
+1. **Homecoming.** The traveller rejoins the home Wi-Fi. Reachy wakes, turns to the door and
+   raises its antennas. The stay-home duck, whose social need has been climbing, rushes over
+   to greet it.
+2. **Unpacking.** The trip log goes to the Jetson, and then to Olares when it's awake. The big
+   VLM captions the frames, drops duplicates, blurs faces and picks out **wonders**: things no
+   duck has seen before, like a snail, a pinecone, a puddle or a big dog.
+3. **The Wild Duckdex.** A new section of the collection, only reachable by going outside. If
+   there's GPS (from the kit, or a GPX export from your phone, merged by timestamp locally), the
+   wonders are pinned on a map of your walks.
+4. **Telling.** The traveller tells the other duck about its best finds, over the duck bus or
+   ggwave: "I saw a big dog by the red gate." The stay-home duck can't go and check, so its
+   curiosity turns into **wanderlust**, a new need that makes it the natural pick for the next
+   outing. Taking turns comes out of their needs, not a rota.
+5. **Slideshow night.** The Jetson sits on the TV stand, so it can drive the TV (DisplayPort to
+   HDMI). It shows the trip's best "postcards" while Reachy turns between the screen and the
+   ducks, and the traveller gets excited when it recognises its own photos.
+6. **Learning from it.** The fall log feeds the dojo: "slipped on gravel three times" becomes a
+   gravel-terrain training run in MuJoCo, with the usual simulation, test pen and rollback.
+   Adventurous ducks slowly get better outdoors, and a well-travelled duck's personality drifts
+   bolder.
+7. **Souvenirs (for fun, maybe).** The duck has a ground-pick skill with its beak. It might
+   manage to bring home a leaf. It might not.
+
+### Outing rules
+
+Dry weather, moderate temperatures, soft or smooth ground, short trips, carried across roads
+and kerbs, never left alone, and back on the charger at home afterwards. Tiredness still works
+as the battery gauge outside, so when it starts yawning, head home.
+
+---
+
+## 10. More tamagotchi ideas for this setup
+
+- **The TV is its tamagotchi screen.** When nobody's watching, the Jetson shows an ambient
+  pixel-art pond on the TV with little Ah-Ah and Tee-Tee sprites that mirror the real ducks'
+  state: sleepy sprites when their batteries are low, a heart when one is being petted, a
+  speech bubble when they gossip. It's a literal tamagotchi display of real pets.
+- **Red light, green light with Reachy as game master.** Reachy turns away and the ducks walk
+  toward it. It spins back round, and any duck its camera catches moving is "out" and has to go
+  back. Pure camera and turn-taking, very little to build, very funny to watch.
+- **Simon says.** Reachy strikes a head pose and the ducks copy it with `robot.head`. You can
+  join in too.
+- **Gifts, like a cat.** A contented duck sometimes picks up a small toy with its beak and
+  brings it to where you're sitting (Reachy's view knows where the sofa is), then waits for a
+  head scratch.
+- **Daily wishes.** Each morning each duck picks a wish from its needs and personality: "play
+  ball", "see the kitchen", "meet Tee-Tee under the table", "go on walkies". The Pond (and the TV
+  pond) shows it, and granting it gives a big mood boost. That's a gentle, non-guilty
+  tamagotchi care loop.
+- **Weekly vet check.** Reachy plays doctor. Each duck walks a short route in the test pen while
+  the Jetson compares gait, speed, servo temperatures and fall count against its own baseline.
+  The result reads like a pet check-up ("Tee-Tee's left knee is running warm"), and it's genuinely
+  useful maintenance: you spot a wearing servo before it fails.
+- **Bedtime and wake-up rituals.** At night Reachy looks at each duck on its charger in turn,
+  wiggles its antennas, and dims into its own sleep pose. In the morning, whoever has the most
+  energy wakes the other one.
+- **Printed tags as furniture for robots.** Small AprilTag-style printed markers on the
+  chargers, beds and toys give the cameras exact positions. It makes "go to bed" docking,
+  gift-bringing and games much more reliable, and the tags can double as "toys" in games.
+
+---
+
+## 11. Build plan: foundation first
 
 **Phase 0: plumbing (one evening)**
 - Name the ducks: `sudo robotctl system set-name ah-ah` and `sudo robotctl system set-name tee-tee`.
   Every board flashed from one image is called `radxa-zero3`, so they'll collide otherwise.
-- Put the ducks, Reachy Mini, the Jetson and Olares on the same LAN. From the Jetson, both
-  `curl http://ah-ah.local:8080/frame -o f.png` and `curl http://reachy-mini.local:8000/api/state/full`
-  should work (or use IPs from `duckctl ip`).
+- Put the ducks, the Jetson and Olares on the same LAN, with Reachy Lite plugged into the
+  Jetson. From the Jetson, both `curl http://ah-ah.local:8080/frame -o f.png` and
+  `curl http://localhost:8000/api/state/full` should work (or use duck IPs from `duckctl ip`).
 - Enable the duck detector (`[duck_detector] enabled`) and chorale consent (`[chorale] accept`)
   in `robotctl configure` on both ducks.
 - Noctua fans and a GPU power cap on Olares.
@@ -381,7 +491,8 @@ rollback are what make it safe to keep trying.
 **Phase 1: the Jetson talks to everyone**
 - One Python service in Docker on the Jetson. For the ducks, reuse
   `spaces/shared/control.py` (`Rpc`) over the WebRTC control lane via `ws://<duck>:8443`. For
-  Reachy, use the `reachy_mini` SDK with `connection_mode="network"`, or its REST API.
+  Reachy Lite, plug it into the Jetson by USB, run its daemon there, and use the `reachy_mini`
+  SDK or `http://localhost:8000/api`.
 - Milestone: a web page button makes Ah-Ah turn and `greet` while Reachy looks at it.
 
 **Phase 2: seeing the room**
@@ -411,9 +522,14 @@ rollback are what make it safe to keep trying.
 - Upstream proposals to Pollen: raw audio playback on the duck, a shared mic stream, and the
   spine itself as the missing autonomous brain.
 
+**Phase 7: field trips**
+- Tier 1 walkies with the on-duck recorder, homecoming, trip processing on Olares, the Wild
+  Duckdex and slideshow night. Then outdoor-terrain training in the dojo, and later the Tier 2
+  expedition kit.
+
 ---
 
-## 10. Parked for later: human speech
+## 12. Parked for later: human speech
 
 On hold until the foundation works well. Kept here so nothing's lost:
 
@@ -428,7 +544,7 @@ On hold until the foundation works well. Kept here so nothing's lost:
 
 ---
 
-## 11. Gotchas
+## 13. Gotchas
 
 - **Keep the language model off the motors.** It proposes and the duck's own controller
   decides. Refuse `robot.move` goals toward edges or drops flagged by ToF.
