@@ -146,3 +146,40 @@ def test_a_new_behaviour_keeps_its_name_when_the_old_one_is_interrupted(tmp_path
         assert mind.behaviour is None
 
     asyncio.run(main())
+
+
+def test_the_pond_page_and_the_duck_actions(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from nest.web import build
+
+    async def main():
+        nest = make_nest(tmp_path)
+        await nest.start()
+        try:
+            for _ in range(50):
+                if all(c.connected for c in nest.ducks.values()):
+                    break
+                await asyncio.sleep(0.1)
+            ok, message = await nest.direct("ah-ah", "play")
+            assert ok and message == "Ah-Ah is playing."
+            assert nest.minds["ah-ah"].behaviour == "play"
+            ok, message = await nest.direct("tee-tee", "find_friend")
+            assert ok and "Ah-Ah" in message
+            assert (await nest.direct("ah-ah", "fly"))[0] is False
+            nest.minds["tee-tee"].paused = True
+            ok, message = await nest.direct("tee-tee", "play")
+            assert not ok and "paused" in message
+            status = nest.status()
+            assert "yellow ball" in status["things"] and "sofa" not in status["things"]
+        finally:
+            await nest.stop()
+
+    asyncio.run(main())
+
+    client = TestClient(build(make_nest(tmp_path)))
+    page = client.get("/")
+    assert page.status_code == 200 and "The Pond" in page.text
+    assert "fonts.googleapis" not in page.text  # everything is served locally
+    font = client.get("/static/fonts/pressstart2p.woff2")
+    assert font.status_code == 200 and font.content[:4] == b"wOF2"

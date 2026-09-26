@@ -41,6 +41,7 @@ class Context:
     my_room_xy: Callable[[], tuple[float, float] | None] = lambda: None
     friend_room_xy: Callable[[], tuple[float, float] | None] = lambda: None
     bed_xy: Callable[[], tuple[float, float] | None] = lambda: None
+    nest_xy: Callable[[], tuple[float, float] | None] = lambda: None
     on_event: Callable[[str, str], None] = lambda duck, text: None
 
 
@@ -351,7 +352,7 @@ async def wander(m: Mind) -> None:
 
 
 async def seek_friend(m: Mind) -> None:
-    friend = m.ctx.friend_name or "friend"
+    friend = (m.ctx.friend_name or "its friend").title()
     goal = m.ctx.friend_room_xy()
     if goal is not None:
         m.note(f"going to find {friend}")
@@ -376,7 +377,7 @@ async def greet_friend(m: Mind) -> None:
         await m.client.look(math.cos(bearing), math.sin(bearing), 0.0)
     await m.say("greet")
     m.needs.on_friend_near(10.0)
-    m.note(f"greeted {m.ctx.friend_name}")
+    m.note(f"greeted {(m.ctx.friend_name or 'its friend').title()}")
 
 
 async def call_out(m: Mind) -> None:
@@ -413,7 +414,7 @@ async def investigate(m: Mind) -> None:
         return
     sighting, mark = found
     m.note(f"going to look {sighting.describe()} for the {sighting.obj} "
-           f"({sighting.told_by} said so)")
+           f"({sighting.told_by.title()} said so)")
     arrived = await m.go_to(mark.xy, budget_s=45.0)
     await m.client.look(0.6, 0.0, -0.1)  # peer at the floor around it
     await m.say("inquire")
@@ -423,6 +424,32 @@ async def investigate(m: Mind) -> None:
     # you, in the Pond, recording the sighting. Either credits the Duckdex entry to the teller.
     m.investigating = sighting.obj
     await asyncio.sleep(5.0)
+
+
+async def come_here(m: Mind) -> None:
+    """Walk to the Nest (in front of the TV stand, where people sit with Reachy)."""
+    goal = m.ctx.nest_xy()
+    if goal is None:
+        await m.stand()
+        await m.client.look(1.0, 0.0, 0.5)
+        await m.say("greet")
+        m.note("can't see the way to the Nest: greeted from where it is")
+        return
+    m.note("coming over")
+    arrived = await m.go_to(goal, budget_s=45.0)
+    await m.client.look(1.0, 0.0, 0.5)
+    await m.say("greet" if arrived else "inquire")
+    m.note("here!" if arrived else "couldn't get all the way")
+
+
+async def show_something(m: Mind) -> None:
+    """Stand still and look ahead, ready to be shown a thing. What it sees becomes a sighting
+    (the captioner, or you in the Pond's "Saw & find" tab)."""
+    await m.stand()
+    await m.client.look(0.5, 0.0, 0.05)
+    await m.say("inquire")
+    m.note("waiting to be shown something")
+    await m.hold_head(0.0, 12.0)
 
 
 async def chatter(m: Mind) -> None:
@@ -435,4 +462,5 @@ BEHAVIOURS: dict[str, Callable[[Mind], Awaitable[None]]] = {
     "rest": rest, "nap": nap, "go_to_bed": go_to_bed, "look_around": look_around,
     "wander": wander, "seek_friend": seek_friend, "greet_friend": greet_friend,
     "call_out": call_out, "play": play, "chatter": chatter, "investigate": investigate,
+    "come_here": come_here, "show_something": show_something,
 }

@@ -24,11 +24,11 @@ from typing import Any
 
 from .batteries import BatteryDiary
 from .bus import DuckBus, Earshot
-from .config import Config, DuckConfig
+from .config import LANDMARK_WORDS, Config, DuckConfig
 from .duck.client import DuckClient
 from .duck.transport import LoopbackTransport, Transport, UnixSocketTransport, WebRtcTransport
 from .reachy import ReachyGaze
-from .spine.mind import Mind, go_to_bed
+from .spine.mind import BEHAVIOURS, Mind, go_to_bed
 from .spine.personality import Personality
 from .spine.safety import SafetyGate, SafetyLimits
 from .spine.tiredness import Band, Thresholds
@@ -118,6 +118,17 @@ class Nest:
                 ctx.friend_room_xy = lambda f=friend: self.room.duck(f)
             ctx.my_room_xy = lambda n=name: self.room.duck(n)
             ctx.bed_xy = lambda b=bed: self.room.landmarks.get(b) if b else None
+            ctx.nest_xy = self._nest_spot
+
+    def _nest_spot(self) -> tuple[float, float] | None:
+        """Where "come here" leads: the `nest` landmark if you set one, else 0.8 m out in front
+        of Reachy on the TV stand."""
+        if "nest" in self.room.landmarks:
+            return self.room.landmarks["nest"]
+        if not self.config.reachy.enabled and not self.sim:
+            return None
+        (x, y), facing = self.room.reachy_xy, self.room.reachy_facing
+        return x + 0.8 * math.cos(facing), y + 0.8 * math.sin(facing)
 
     def bus_in_earshot(self, a: str, b: str) -> bool:
         return self.bus.in_earshot(a, b) is not None if hasattr(self, "bus") else False
@@ -342,7 +353,7 @@ class Nest:
     def _delivered(self, delivery) -> None:
         listener = self.minds[delivery.listener]
         m = delivery.message
-        self._event(delivery.speaker, f"told {delivery.listener}: “{m.subtitle()}” "
+        self._event(delivery.speaker, f"told {delivery.listener.title()}: “{m.subtitle()}” "
                                       f"({delivery.size_bytes} bytes; {delivery.evidence})")
         if m.kind == "found" and m.landmark:
             known = listener.memory.where_is(m.obj)
@@ -374,7 +385,7 @@ class Nest:
         sighting = mind.memory.saw(obj, relation, landmark, near)
         meal = mind.duckdex.feed(obj, credited_to=credited)
         if credited and meal == "meal":
-            self._event(duck, f"found the {obj}, just where {credited} said!")
+            self._event(duck, f"found the {obj}, just where {credited.title()} said!")
             mind.needs.on_friend_near(20.0)  # a good feeling about its friend
         mind.needs.on_fed(meal)
         self._event(duck, f"saw a {obj} {sighting.describe()} ({meal})")
@@ -400,6 +411,40 @@ class Nest:
         if self.gaze and self.room.duck(duck):
             await self.gaze.look_at_bearing(self.room.bearing_from_reachy(*self.room.duck(duck)),
                                             antennas="perk")
+
+    ACTIONS = {
+        "come_here": ("come_here", "{duck} is coming over."),
+        "look_at_me": (None, "{duck} looked up and said hello."),
+        "play": ("play", "{duck} is playing."),
+        "find_friend": ("seek_friend", "{duck} is off to find {friend}."),
+        "show_something": ("show_something", "Hold the thing in front of {duck}'s beak."),
+        "go_to_bed": ("go_to_bed", "{duck} is heading to bed."),
+    }
+
+    async def direct(self, duck: str, action: str) -> tuple[bool, str]:
+        """Something you asked a duck to do from the Pond. (accepted, what to tell you)
+
+        Your request replaces whatever the duck was doing. Its safety still applies: a walk the
+        gate refuses turns into a turn-away or a greeting, and the reason shows in the Pond."""
+        mind = self.minds[duck]
+        name = duck.title()
+        friend = (mind.ctx.friend_name or "its friend").title()
+        if action not in self.ACTIONS:
+            return False, f"Unknown action {action!r}."
+        if not mind.client.connected:
+            return False, f"{name} isn't connected right now."
+        if mind.paused:
+            return False, f"{name} is paused. Tap Resume first."
+        if mind.asleep and action != "go_to_bed":
+            return False, f"{name} is asleep. Say good morning first."
+        behaviour, message = self.ACTIONS[action]
+        if behaviour is None:
+            await self.call(duck)
+        else:
+            mind.interrupt()
+            mind._start(behaviour, BEHAVIOURS[behaviour](mind))
+        self._event(duck, f"you asked: {action.replace('_', ' ')}")
+        return True, message.format(duck=name, friend=friend)
 
     async def bedtime(self) -> None:
         """Reachy looks at each duck in turn, wiggles goodnight, then sleeps itself."""
@@ -451,6 +496,9 @@ class Nest:
                 "duckdex": len(mind.duckdex),
                 "knows": mind.memory.things_seen(),
                 "safety": mind.gate.last_refusal,
+                "asleep": mind.asleep,
+                "just_told": any(d.speaker == name and time.time() - d.at < 8
+                                 for d in self.bus.log[-5:]),
                 "events": [{"at": t, "text": x} for t, x in list(mind.events)[-8:]],
             }
         return {"ducks": ducks, "reachy": {"status": self.reachy_status,
@@ -458,4 +506,6 @@ class Nest:
                 "messages": self.bus.recent(), "pending_messages": len(self.bus.pending),
                 "batteries": self.batteries.health(), "feed": self.feed[-30:],
                 "landmarks": sorted(self.room.landmarks), "sim": self.sim,
+                "things": [w for w in self.vocab.words
+                           if w not in self.room.landmarks and w not in LANDMARK_WORDS],
                 "uptime_s": round(time.time() - self.started)}

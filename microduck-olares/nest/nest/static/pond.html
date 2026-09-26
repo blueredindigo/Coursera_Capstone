@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f4f0e6">
+<link rel="icon" href="data:,">
+<title>The Pond</title>
+<style>
+@font-face{font-family:"Fraunces";src:url(/static/fonts/fraunces-latin.woff2) format("woff2");font-weight:600 700;font-display:swap}
+@font-face{font-family:"Atkinson Hyperlegible";src:url(/static/fonts/atkinson-400.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Atkinson Hyperlegible";src:url(/static/fonts/atkinson-700.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Press Start 2P";src:url(/static/fonts/pressstart2p.woff2) format("woff2");font-display:swap}
+:root{--ground:#f4f0e6;--sand:#e6e0d1;--card:#ffffff;--line:#e0d9c8;--line2:#d8d0bd;--ink:#1e2421;
+--ink2:#3b433f;--dim:#56605b;--teal:#1f5f5b;--teal-dark:#14413e;--teal-tint:#dcebe8;--good:#1c6b45;
+--warn:#9a4712;--bad:#a1261b;--night:#1d2a3a;--moon:#f2c14e;--serif:"Fraunces",Georgia,serif}
+*{box-sizing:border-box}
+html{background:var(--ground)}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.4 "Atkinson Hyperlegible",system-ui,sans-serif}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--teal)}a:hover{color:var(--teal-dark)}
+.wrap{max-width:480px;margin:0 auto;padding:16px 16px 96px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-family:var(--serif);font-size:28px;font-weight:700}
+h2{margin:0;font-family:var(--serif);font-size:20px;font-weight:600}
+.pill{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;background:var(--sand);font-size:13px;color:var(--ink2)}
+.sim{background:#1e2421;color:#f4f0e6}
+.pond{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1f3320;background:#cfe0b8;aspect-ratio:350/142}
+.pond svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pet{position:absolute;padding:0;border:0;background:transparent;cursor:pointer;border-radius:8px}
+.pet:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:5px;border-radius:16px;background:var(--sand)}
+.seg button{min-height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:0;border-radius:12px;background:transparent;color:var(--ink2);cursor:pointer}
+.seg button[aria-selected="true"],.seg button[aria-checked="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(30,36,33,.12)}
+.seg b{font-size:16px}.seg small{font-size:13px}
+.card{display:flex;flex-direction:column;gap:12px;padding:16px;border-radius:20px;background:var(--card);border:1px solid var(--line)}
+.row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.energy{font-family:var(--serif);font-size:44px;font-weight:700;line-height:1}
+.meter{height:10px;border-radius:99px;background:#ece6d8;overflow:hidden}.meter i{display:block;height:100%;border-radius:99px}
+.muted{color:var(--dim);font-size:14px}
+.now{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink2)}
+.warn{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:12px;background:#fbeee4;color:#7a3310;font-size:14px}
+.ghost{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid #c9c0ab;background:transparent;cursor:pointer}
+.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.act{min-height:84px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;padding:12px 14px;border-radius:16px;text-align:left;cursor:pointer;border:1px solid var(--line2);background:var(--card)}
+.act b{font-size:16px}.act span{font-size:13px;line-height:1.3}
+.act.primary{border:0;background:var(--teal);color:#fff}
+.act[aria-disabled="true"]{border:1px dashed #c9c0ab;background:transparent;color:#6b746f;cursor:default}
+.toast{display:flex;gap:8px;align-items:center;min-height:44px;padding:0 14px;border-radius:14px;background:var(--ink);color:var(--ground);font-size:14px}
+.toast[hidden]{display:flex;visibility:hidden}
+.lately{margin:0;padding-left:18px;font-size:14px;color:var(--ink2)}.lately li{margin:3px 0}
+.sentence{padding:16px;border-radius:20px;background:var(--card);border:1px solid var(--line);font-family:var(--serif);font-size:22px;line-height:1.45}
+.slot{padding:0 4px;border-radius:6px;border-bottom:3px solid #d8b24a}
+.slot.on{border-bottom-color:var(--teal);background:var(--teal-tint)}
+.slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px;border-radius:14px;background:var(--sand)}
+.slots button{min-height:44px;border:0;border-radius:10px;font-size:14px;font-weight:700;background:transparent;color:var(--ink2);cursor:pointer}
+.slots button[aria-selected="true"]{background:var(--card);color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:44px;padding:0 14px;border-radius:99px;border:1px solid #c9c0ab;background:var(--card);cursor:pointer;font-size:15px}
+.chip[aria-pressed="true"]{border:2px solid var(--teal);background:var(--teal-tint);color:var(--teal-dark);font-weight:700}
+label.field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--ink2)}
+.field input,.field select{min-height:44px;padding:0 12px;border-radius:12px;border:1px solid #c9c0ab;background:var(--card);font-size:16px}
+.big{min-height:52px;border:0;border-radius:16px;background:var(--teal);color:#fff;font-size:17px;font-weight:700;cursor:pointer}
+.ok{margin:0;min-height:20px;font-size:14px;color:var(--good)}
+.where{display:flex;flex-direction:column;gap:10px;padding:14px 16px;border-radius:20px;background:#e9eee9;border:1px solid #cfd9d1}
+.where .line{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.where .line .field{flex:1 1 140px}
+.dark{min-height:44px;min-width:64px;padding:0 14px;border:0;border-radius:12px;background:var(--ink);color:#fff;font-weight:700;cursor:pointer}
+.nightcard{display:flex;flex-direction:column;gap:14px;padding:16px;border-radius:20px;background:var(--card);border:1px solid var(--line)}
+.nightcard.asleep{background:var(--night);color:#eef1f6;border-color:var(--night)}
+.nightcard .big{background:var(--night)}.nightcard.asleep .big{background:var(--moon);color:var(--ink)}
+.packs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pack{min-height:88px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:2px;padding:10px 12px;border-radius:14px;text-align:left;cursor:pointer;border:1px solid var(--line2);background:var(--card)}
+.pack[aria-checked="true"]{border:2px solid var(--teal);background:var(--teal-tint)}
+.pack b{font-size:16px}.pack span{font-size:13px}
+.good{color:var(--good);font-weight:700}.tired{color:var(--warn);font-weight:700}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(244,240,230,.96);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+nav.tabs div{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+nav.tabs button{min-height:48px;border:0;border-radius:14px;background:var(--sand);font-weight:700;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--teal);color:#fff}
+[role="tabpanel"]{display:flex;flex-direction:column;gap:14px}
+[role="tabpanel"][hidden]{display:none}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.offline{padding:10px 12px;border-radius:12px;background:#fbeee4;color:#7a3310;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>The Pond</h1>
+    <div class="pill" id="reachy">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/></svg>
+      <span id="reachy-text">Connecting to the Nest…</span>
+    </div>
+  </header>
+
+  <div class="pond" id="pond">
+    <svg id="scene" viewBox="0 0 350 142" shape-rendering="crispEdges" role="img" aria-label="The pond: the two ducks walking about"></svg>
+  </div>
+  <p class="offline" id="offline" hidden>The Nest isn't answering. Is the Jetson on?</p>
+
+  <!-- ── Care ─────────────────────────────────────────────────────────────── -->
+  <section role="tabpanel" id="panel-care" aria-labelledby="tab-care">
+    <div class="seg" role="tablist" aria-label="Choose a duck" id="duck-tabs"></div>
+    <section class="card" id="duck-card" aria-live="polite"></section>
+    <div class="row" style="align-items:baseline">
+      <h2 id="ask-title">Ask …</h2>
+      <button class="ghost" id="pause"></button>
+    </div>
+    <div class="actions" id="actions"></div>
+    <div class="toast" role="status" aria-live="polite" id="toast" hidden>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M20 6 9 17l-5-5"/></svg>
+      <span id="toast-text"></span>
+    </div>
+    <section class="card">
+      <h2>Lately</h2>
+      <ul class="lately" id="lately"></ul>
+    </section>
+  </section>
+
+  <!-- ── Saw & find ───────────────────────────────────────────────────────── -->
+  <section role="tabpanel" id="panel-saw" aria-labelledby="tab-saw" hidden>
+    <h2 style="font-size:26px;font-weight:700">A duck saw something</h2>
+    <p class="sentence" id="sentence"></p>
+    <div class="slots" role="tablist" aria-label="Which part to change" id="slots"></div>
+    <div class="chips" id="chips"></div>
+    <label class="field">Something else
+      <input type="text" id="other" placeholder="e.g. snail shell" autocomplete="off">
+    </label>
+    <button class="big" id="record"></button>
+    <p class="ok" role="status" aria-live="polite" id="recorded"></p>
+    <section class="where" aria-label="Where is it?">
+      <h2 style="font-size:18px">Where is it?</h2>
+      <div class="line">
+        <label class="field">Ask
+          <select id="ask-duck"></select>
+        </label>
+        <label class="field">about
+          <input type="text" id="ask-obj" value="yellow ball" autocomplete="off">
+        </label>
+        <button class="dark" id="ask">Ask</button>
+      </div>
+      <p style="margin:0;font-size:15px" role="status" aria-live="polite" id="answer"></p>
+    </section>
+  </section>
+
+  <!-- ── Night ────────────────────────────────────────────────────────────── -->
+  <section role="tabpanel" id="panel-night" aria-labelledby="tab-night" hidden>
+    <h2 style="font-size:26px;font-weight:700">Night &amp; batteries</h2>
+    <section class="nightcard" id="nightcard" aria-label="Bedtime">
+      <div style="display:flex;align-items:center;gap:12px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span style="font-family:var(--serif);font-size:20px;font-weight:600" id="night-title"></span>
+          <span style="font-size:14px;line-height:1.35" id="night-hint"></span>
+        </div>
+      </div>
+      <button class="big" id="night-button"></button>
+    </section>
+    <section class="card" aria-label="Pit stop">
+      <h2>Pit stop</h2>
+      <p class="muted" style="margin:0">Swap a pack, then tell the Nest which one went in. Sit the duck down and power it off first.</p>
+      <div class="seg" role="radiogroup" aria-label="Which duck" id="pit-ducks"></div>
+      <div class="packs" role="radiogroup" aria-label="Which pack went in" id="packs"></div>
+      <button class="big" id="log"></button>
+      <p class="ok" role="status" aria-live="polite" id="logged"></p>
+    </section>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <div role="tablist">
+    <button role="tab" id="tab-care" aria-controls="panel-care" aria-selected="true">Care</button>
+    <button role="tab" id="tab-saw" aria-controls="panel-saw" aria-selected="false">Saw &amp; find</button>
+    <button role="tab" id="tab-night" aria-controls="panel-night" aria-selected="false">Night</button>
+  </div>
+</nav>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const title = (n) => String(n).split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join("-");
+// Only touch the DOM when something changed, so focus and hover survive the 1.5 s refresh.
+const put = (el, html) => { if (el.__html !== html) { el.__html = html; el.innerHTML = html; } };
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"content-type": "application/json"},
+                              body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+
+let S = null;            // the latest /api/status
+let picked = null;       // the duck the Care tab shows
+const BANDS = {
+  high: {short: "bright", words: "Bright and chirpy", color: "#1c6b45"},
+  medium: {short: "fine", words: "Doing fine", color: "#1e2421"},
+  low: {short: "tired", words: "Getting tired", color: "#9a4712"},
+  very_low: {short: "very tired", words: "Very tired: going to bed", color: "#a1261b"},
+  charging: {short: "charging", words: "Napping on the charger", color: "#1f5f5b"},
+  unknown: {short: "…", words: "Battery not known yet", color: "#56605b"},
+};
+const tiredBand = (b) => b === "low" || b === "very_low";
+
+// ── tabs ─────────────────────────────────────────────────────────────────────
+for (const name of ["care", "saw", "night"]) {
+  $("tab-" + name).addEventListener("click", () => {
+    for (const other of ["care", "saw", "night"]) {
+      $("tab-" + other).setAttribute("aria-selected", String(other === name));
+      $("panel-" + other).hidden = other !== name;
+    }
+    window.scrollTo({top: 0});
+  });
+}
+
+// ── Care ─────────────────────────────────────────────────────────────────────
+const ACTIONS = [
+  {key: "come_here", label: "Come here", hint: () => "Walks over to the Nest", primary: true},
+  {key: "look_at_me", label: "Look at me", hint: () => "Head up, a greeting quack"},
+  {key: "play", label: "Play", hint: (d) => tiredBand(d.tiredness) ? "Low battery: a short game only" : "Roulade, kick or a head-bob"},
+  {key: "find_friend", label: (d, f) => "Find " + f, hint: () => "Goes looking for its friend"},
+  {key: "show_something", label: "Show it something", hint: () => "Feed its curiosity: hold a thing up"},
+  {key: "go_to_bed", label: "Go to bed", hint: (d) => tiredBand(d.tiredness) ? "Recommended: battery " + Math.round(d.battery_percent) + "%" : "Walks to its bed and naps", primaryIf: (d) => tiredBand(d.tiredness)},
+];
+let toastTimer = null;
+function toast(text) {
+  $("toast-text").textContent = text;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, 6000);
+}
+
+function renderCare() {
+  const names = Object.keys(S.ducks);
+  if (!picked || !S.ducks[picked]) picked = names[0];
+  const d = S.ducks[picked];
+  const friend = title(names.find((n) => n !== picked) || "its friend");
+  const band = BANDS[d.tiredness] || BANDS.unknown;
+  put($("duck-tabs"), names.map((n) => {
+    const x = S.ducks[n], b = BANDS[x.tiredness] || BANDS.unknown;
+    const pct = x.battery_percent == null ? "–" : Math.round(x.battery_percent) + "%";
+    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${pct} · ${esc(x.connected ? b.short : "offline")}</small></button>`;
+  }).join(""));
+
+  const pct = d.battery_percent == null ? "–" : Math.round(d.battery_percent);
+  const doing = d.paused ? "paused by you" : d.asleep ? "asleep" : (d.behaviour || "deciding what to do").replace(/_/g, " ");
+  const block = !d.connected ? `${title(picked)} isn't connected (${d.transport}).`
+    : d.fallen ? "It has fallen over. It gets itself up; the Nest waits."
+    : d.safety && !d.paused ? "Won't walk right now: " + d.safety + "." : "";
+  put($("duck-card"), `
+    <div class="row">
+      <div style="display:flex;flex-direction:column;gap:2px"><span class="muted" style="font-size:13px">Energy</span>
+        <span class="energy" style="color:${band.color}">${pct}%</span></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right">
+        <b>${esc(band.words)}</b><span class="muted">Mood: ${esc(d.mood)}</span></div>
+    </div>
+    <div class="meter" aria-hidden="true"><i style="width:${d.battery_percent || 0}%;background:${band.color}"></i></div>
+    <div class="now"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+      <span>Now: ${esc(doing)}${d.pack ? " · pack " + esc(d.pack) : ""}</span></div>
+    ${block ? `<div class="warn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>${esc(block)}</span></div>` : ""}`);
+
+  $("ask-title").textContent = "Ask " + title(picked) + " to…";
+  $("pause").textContent = d.paused ? "Resume" : "Pause";
+  const off = d.paused || !d.connected;
+  put($("actions"), ACTIONS.map((a) => {
+    const label = typeof a.label === "function" ? a.label(d, friend) : a.label;
+    const primary = a.primary || (a.primaryIf && a.primaryIf(d));
+    const hint = d.paused ? "Paused: tap Resume first" : !d.connected ? "Not connected" : a.hint(d);
+    return `<button class="act${primary && !off ? " primary" : ""}" data-action="${a.key}" aria-disabled="${off}"><b>${esc(label)}</b><span>${esc(hint)}</span></button>`;
+  }).join(""));
+
+  const lately = [...S.feed].reverse().slice(0, 6);
+  put($("lately"), lately.map((e) => `<li><b>${esc(title(e.who))}</b> ${esc(e.text)}</li>`).join("") || `<li class="muted">Nothing yet.</li>`);
+}
+$("duck-tabs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-duck]"); if (!b) return;
+  picked = b.dataset.duck; renderAll();
+});
+$("actions").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-action]"); if (!b) return;
+  if (b.getAttribute("aria-disabled") === "true") { toast(b.querySelector("span").textContent); return; }
+  try { const r = await post(`/api/duck/${encodeURIComponent(picked)}/do/${b.dataset.action}`); toast(r.message); }
+  catch (err) { toast("Couldn't reach the Nest: " + err.message); }
+  refresh();
+});
+$("pause").addEventListener("click", async () => {
+  try { const r = await post(`/api/duck/${encodeURIComponent(picked)}/pause`);
+    toast(title(picked) + (r.paused ? " is paused: it will sit still." : " is back to its own life.")); }
+  catch (err) { toast("Couldn't reach the Nest: " + err.message); }
+  refresh();
+});
+
+// ── Saw & find ───────────────────────────────────────────────────────────────
+const RELATIONS = ["behind", "under", "on", "next to", "in front of", "inside"];
+const SLOTS = [["who", "Who"], ["obj", "Thing"], ["rel", "Where"], ["mark", "Place"], ["near", "Near"]];
+const saw = {slot: "obj", who: null, obj: "yellow ball", rel: "behind", mark: "green chair", near: "sofa"};
+function sawOptions(slot) {
+  if (slot === "who") return Object.keys(S.ducks);
+  if (slot === "obj") return S.things.slice(0, 16);
+  if (slot === "rel") return RELATIONS;
+  return S.landmarks.filter((l) => !/bed$/.test(l));
+}
+function renderSaw() {
+  const names = Object.keys(S.ducks);
+  if (!saw.who || !S.ducks[saw.who]) saw.who = names[0];
+  if (!S.landmarks.includes(saw.mark)) saw.mark = S.landmarks[0] || "";
+  const other = $("other").value.trim();
+  const obj = other || saw.obj;
+  const span = (k, v) => `<span class="slot${saw.slot === k ? " on" : ""}">${esc(v)}</span>`;
+  put($("sentence"), `${span("who", title(saw.who))} found a ${span("obj", obj)}, ${span("rel", saw.rel)} the ${span("mark", saw.mark)}${saw.near ? " near the " + span("near", saw.near) : ""}.`);
+  put($("slots"), SLOTS.map(([k, label]) => `<button role="tab" data-slot="${k}" aria-selected="${saw.slot === k}">${label}</button>`).join(""));
+  put($("chips"), sawOptions(saw.slot).map((v) => {
+    const on = saw.slot === "who" ? v === saw.who : saw[saw.slot] === v;
+    return `<button class="chip" data-chip="${esc(v)}" aria-pressed="${on}">${esc(saw.slot === "who" ? title(v) : v)}</button>`;
+  }).join("") + (saw.slot === "near" ? `<button class="chip" data-chip="" aria-pressed="${!saw.near}">(nothing)</button>` : ""));
+  const friend = names.find((n) => n !== saw.who);
+  $("record").textContent = friend ? `Record, and tell ${title(friend)} when they meet` : "Record";
+  put($("ask-duck"), names.map((n) => `<option value="${esc(n)}">${esc(title(n))}</option>`).join(""));
+}
+$("slots").addEventListener("click", (e) => { const b = e.target.closest("button[data-slot]"); if (b) { saw.slot = b.dataset.slot; renderSaw(); } });
+$("chips").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-chip]"); if (!b) return;
+  saw[saw.slot] = b.dataset.chip || null;
+  if (saw.slot === "obj") $("other").value = "";
+  $("recorded").textContent = ""; renderSaw();
+});
+$("other").addEventListener("input", renderSaw);
+$("record").addEventListener("click", async () => {
+  const obj = $("other").value.trim() || saw.obj;
+  try {
+    const r = await post("/api/sighting", {duck: saw.who, obj, relation: saw.rel, landmark: saw.mark, near: saw.near || null});
+    const who = title(saw.who);
+    $("recorded").textContent = r.meal === "meal"
+      ? `A meal! New in ${who}'s Duckdex.` + (r.queued_for_friend ? " Its friend will hear about it when they're close." : "")
+      : r.meal === "snack" ? `A snack: ${who} has seen a ${obj} before.` : `${who} is bored of the ${obj}.`;
+  } catch (err) { $("recorded").textContent = "Couldn't record it: " + err.message; }
+  refresh();
+});
+$("ask").addEventListener("click", async () => {
+  const duck = $("ask-duck").value, obj = $("ask-obj").value.trim();
+  if (!obj) return;
+  try {
+    const r = await post("/api/ask", {duck, obj});
+    $("answer").innerHTML = r.known
+      ? `“${esc(r.where.charAt(0).toUpperCase() + r.where.slice(1))}.” <span class="muted">${r.told_by ? "Heard from " + esc(title(r.told_by)) : "Saw it"} · ${Math.round(r.confidence * 100)}% sure</span>`
+      : esc(title(duck)) + " doesn't know." + (r.asked_friend ? " It asked its friend; the answer comes back when they meet." : "");
+  } catch (err) { $("answer").textContent = "Couldn't ask: " + err.message; }
+});
+
+// ── Night ────────────────────────────────────────────────────────────────────
+const pit = {duck: null, pack: "A"};
+function renderNight() {
+  const asleep = Object.values(S.ducks).some((d) => d.asleep) || S.reachy.status === "asleep";
+  $("nightcard").classList.toggle("asleep", asleep);
+  $("night-title").textContent = asleep ? "Everyone's asleep" : "Bedtime";
+  $("night-hint").textContent = asleep
+    ? "The ducks are on their beds and Reachy is asleep too. Nothing will move until morning."
+    : "Reachy looks at each duck, wiggles goodnight, and the ducks walk to their beds and stay there until morning.";
+  $("night-button").textContent = asleep ? "Good morning" : "Start bedtime";
+  $("night-button").dataset.asleep = String(asleep);
+
+  const names = Object.keys(S.ducks);
+  if (!pit.duck || !S.ducks[pit.duck]) pit.duck = names[names.length - 1];
+  put($("pit-ducks"), names.map((n) => `<button role="radio" data-pit="${esc(n)}" aria-checked="${n === pit.duck}"><b>${esc(title(n))}</b></button>`).join(""));
+  put($("packs"), Object.entries(S.batteries).map(([p, b]) => {
+    const where = b.in ? "in " + title(b.in) : "spare";
+    const health = b.drain_pct_per_hour == null ? `<span class="muted">${b.runs} run${b.runs === 1 ? "" : "s"} · learning its drain</span>`
+      : `<span class="${b.getting_tired ? "tired" : "good"}">${b.getting_tired ? "Getting tired" : "Healthy"} · ${b.drain_pct_per_hour} %/h</span>`;
+    return `<button class="pack" role="radio" data-pack="${esc(p)}" aria-checked="${p === pit.pack}"><b>Pack ${esc(p)}</b><span>${esc(where)}</span>${health}</button>`;
+  }).join(""));
+  $("log").textContent = `Log: pack ${pit.pack} into ${title(pit.duck)}`;
+}
+$("night-button").addEventListener("click", async (e) => {
+  const asleep = e.currentTarget.dataset.asleep === "true";
+  e.currentTarget.disabled = true;
+  try { await post(asleep ? "/api/wake" : "/api/bedtime"); } catch (err) { alert("Couldn't reach the Nest: " + err.message); }
+  e.currentTarget.disabled = false; refresh();
+});
+$("pit-ducks").addEventListener("click", (e) => { const b = e.target.closest("button[data-pit]"); if (b) { pit.duck = b.dataset.pit; $("logged").textContent = ""; renderNight(); } });
+$("packs").addEventListener("click", (e) => { const b = e.target.closest("button[data-pack]"); if (b) { pit.pack = b.dataset.pack; $("logged").textContent = ""; renderNight(); } });
+$("log").addEventListener("click", async () => {
+  try { await post("/api/pitstop", {duck: pit.duck, pack: pit.pack});
+    $("logged").textContent = `Logged. ${title(pit.duck)} has pack ${pit.pack}.`; }
+  catch (err) { $("logged").textContent = "Couldn't log it: " + err.message; }
+  refresh();
+});
+
+// ── the 8-bit pond ───────────────────────────────────────────────────────────
+// Two of the real Microduck colourways; a third and fourth duck would get the others.
+const LOOKS = [
+  {shell: "#8fd3e3", shade: "#62aec2", ring: "#f5a31a", beak: "#ee6a2a", foot: "#ee6a2a", sole: "#f2c14e"},
+  {shell: "#c3b1e6", shade: "#9a84cc", ring: "#6fc3e6", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
+  {shell: "#5f6366", shade: "#44484b", ring: "#8a68c8", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
+  {shell: "#efebe3", shade: "#cfc8ba", ring: "#f5a31a", beak: "#ee6a2a", foot: "#f5a31a", sole: "#ee6a2a"},
+];
+const LEGS = [
+  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM3 16h2v1h-2zM9 16h3v1h-3zM2 17h3v1h-3zM10 17h2v1h-2z", joint: "M5 15h4v1h-4zM3 18h1v1h-1zM11 18h1v1h-1z", feet: "M2 19h3v1h-3zM10 19h3v1h-3z", soles: "M2 20h4v1h-4zM10 20h4v1h-4z"},
+  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM4 16h2v1h-2zM8 16h2v1h-2zM4 17h2v1h-2zM8 17h2v1h-2z", joint: "M5 15h4v1h-4zM5 18h1v1h-1zM8 18h1v1h-1zM8 19h1v1h-1z", feet: "M10 18h3v1h-3zM4 19h3v1h-3z", soles: "M10 19h3v1h-3zM4 20h4v1h-4z"},
+];
+const ICONS = {
+  heart: {w: 7, h: 6, fill: "#c8324a", d: "M1 0h2v1h-2zM4 0h2v1h-2zM0 1h7v1h-7zM0 2h7v1h-7zM1 3h5v1h-5zM2 4h3v1h-3zM3 5h1v1h-1z"},
+  zzz: {w: 7, h: 7, fill: "#2d4f7c", d: "M0 0h4v1h-4zM2 1h1v1h-1zM1 2h1v1h-1zM0 3h7v1h-7zM4 4h1v1h-1zM3 5h1v1h-1zM2 6h4v1h-4z"},
+  bang: {w: 5, h: 6, fill: "#1e2421", d: "M2 0h1v1h-1zM2 1h1v1h-1zM2 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
+  ask: {w: 5, h: 6, fill: "#1e2421", d: "M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM3 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
+  note: {w: 6, h: 6, fill: "#1e2421", d: "M2 0h4v1h-4zM2 1h1v1h-1zM5 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM1 3h2v1h-2zM4 3h2v1h-2zM0 4h3v1h-3zM4 4h2v1h-2zM0 5h2v1h-2z"},
+};
+const MOODS = {high: ["note", "bang", "ask", "note", "heart"], medium: ["note", "ask", "bang"],
+  low: ["zzz", "ask", "note"], very_low: ["zzz", "zzz", "ask"], charging: ["zzz"], unknown: ["ask"]};
+const REST = {high: 0.008, medium: 0.012, low: 0.03, very_low: 0.06, charging: 1, unknown: 0.02};
+
+function background() {
+  let tufts = "";
+  for (let x = 3; x < 175; x += 11) tufts += `M${x} 61h1v1h-1zM${x - 1} 61h3v1h-3z`;
+  for (let x = 8; x < 175; x += 17) tufts += `M${x} 60h1v2h-1zM${x + 2} 61h1v1h-1z`;
+  const cloud = "M4 0h4v1h-4zM2 1h8v1h-8zM12 1h3v1h-3zM1 2h15v1h-15zM2 3h12v1h-12z";
+  return `<g transform="scale(2)">
+    <path fill="#cfe0b8" d="M0 0h175v71h-175z"/><path fill="#e3eed4" d="M0 0h175v30h-175z"/>
+    <path fill="#b7cf9c" d="M0 44h14v1h-14zM0 43h8v1h-8zM30 42h26v3h-26zM36 41h14v1h-14zM120 43h30v2h-30zM126 42h16v1h-16z"/>
+    <path fill="#f2c14e" transform="translate(84 6)" d="M2 0h1v1h-1zM5 0h1v1h-1zM3 1h2v1h-2zM1 2h6v1h-6zM0 3h8v1h-8zM1 4h6v1h-6zM3 5h2v1h-2zM2 6h1v1h-1zM5 6h1v1h-1z"/>
+    <path id="cloudA" fill="#ffffff" d="${cloud}"/><path id="cloudB" fill="#f5f9ef" d="${cloud}"/>
+    <path fill="#9fbd84" d="M0 63h175v8h-175z"/><path fill="#3f6b2f" d="M0 62h175v1h-175z"/>
+    <path fill="#5f8a45" d="${tufts}"/>
+    <path fill="#86a86a" d="M3 66h2v1h-2zM17 68h1v1h-1zM31 65h2v1h-2zM48 67h1v1h-1zM62 69h2v1h-2zM77 66h1v1h-1zM93 68h2v1h-2zM104 65h1v1h-1z"/>
+    <path fill="#e27d9a" d="M20 60h1v1h-1zM19 61h3v1h-3zM70 60h1v1h-1zM69 61h3v1h-3z"/>
+    <path fill="#f7f3ea" d="M44 61h1v1h-1zM43 60h1v1h-1zM45 60h1v1h-1z"/>
+    <g transform="translate(113 51)">
+      <path fill="#7a5a3a" d="M51 0h2v1h-2zM50 1h4v1h-4zM6 2h1v1h-1zM50 2h4v1h-4zM5 3h3v1h-3zM51 3h2v1h-2zM5 4h3v1h-3z"/>
+      <path fill="#4f7f39" d="M49 3h1v1h-1zM49 4h1v1h-1zM52 4h1v1h-1zM6 5h1v1h-1zM50 5h1v1h-1zM52 5h1v1h-1zM6 6h1v1h-1zM50 6h1v1h-1zM52 6h1v1h-1zM6 7h1v1h-1zM50 7h1v1h-1zM52 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM50 8h1v1h-1zM52 8h1v1h-1zM5 9h2v1h-2zM49 9h3v1h-3z"/>
+      <path fill="#2f5226" d="M11 6h33v1h-33zM9 7h2v1h-2zM44 7h2v1h-2zM8 8h1v1h-1zM46 8h1v1h-1zM7 9h1v1h-1zM47 9h1v1h-1zM6 10h1v1h-1zM48 10h1v1h-1zM5 11h1v1h-1zM49 11h1v1h-1zM5 12h1v1h-1zM49 12h1v1h-1zM6 13h1v1h-1zM49 13h1v1h-1zM7 14h2v1h-2zM47 14h2v1h-2zM9 15h6v1h-6zM43 15h4v1h-4zM15 16h28v1h-28z"/>
+      <path fill="#4f86ad" d="M11 7h33v1h-33zM9 8h3v1h-3zM15 8h8v1h-8zM27 8h13v1h-13zM43 8h3v1h-3zM8 9h10v1h-10zM20 9h3v1h-3zM28 9h19v1h-19zM7 10h4v1h-4zM14 10h10v1h-10zM28 10h7v1h-7zM38 10h10v1h-10zM6 11h37v1h-37zM45 11h4v1h-4zM6 12h3v1h-3zM12 12h15v1h-15zM30 12h12v1h-12zM46 12h3v1h-3zM7 13h30v1h-30zM39 13h4v1h-4zM45 13h4v1h-4zM9 14h6v1h-6zM18 14h29v1h-29zM15 15h28v1h-28z"/>
+      <path fill="#7fb2d4" d="M12 8h3v1h-3zM40 8h3v1h-3zM11 10h3v1h-3zM27 12h3v1h-3zM15 14h3v1h-3z"/>
+      <path id="ripple" fill="#7fb2d4" d="M18 9h2v1h-2zM35 10h3v1h-3zM9 12h3v1h-3zM37 13h2v1h-2z"/>
+      <path fill="#5c9a3e" d="M23 8h4v1h-4zM23 9h1v1h-1zM25 9h3v1h-3zM24 10h4v1h-4zM43 11h2v1h-2zM42 12h4v1h-4zM43 13h2v1h-2z"/>
+      <path fill="#e27d9a" d="M24 9h1v1h-1z"/>
+      <path fill="#8b8f86" d="M54 8h2v1h-2zM52 9h1v1h-1zM55 9h2v1h-2zM50 10h2v1h-2zM54 10h4v1h-4zM51 11h7v1h-7z"/>
+      <path fill="#b9bdb2" d="M53 9h2v1h-2zM52 10h2v1h-2z"/>
+    </g>
+  </g>
+  <g id="labels" font-family="'Press Start 2P',monospace" font-size="8" fill="#1f3320"></g>
+  <g id="ducks"></g>`;
+}
+
+function sprite(look, pose) {
+  const leg = LEGS[pose.frame];
+  const eye = pose.closed ? "M6 4h4v1h-4z" : pose.happy ? "M6 4h1v1h-1zM7 3h2v1h-2zM9 4h1v1h-1z"
+    : "M7 3h2v1h-2zM6 4h1v1h-1zM8 4h2v1h-2zM7 5h2v1h-2z";
+  return `<path fill="${look.shell}" d="M5 0h6v1h-6zM3 1h10v1h-10zM2 2h2v1h-2zM11 2h3v1h-3zM2 3h1v1h-1zM13 3h1v1h-1zM2 4h1v1h-1zM12 4h2v1h-2zM2 5h2v1h-2zM12 5h2v1h-2zM4 11h7v1h-7zM3 12h9v1h-9zM3 13h7v1h-7z"/>
+    <path fill="${look.shade}" d="M2 6h12v1h-12zM10 13h2v1h-2zM4 14h7v1h-7z"/>
+    <path fill="#eceeea" d="M4 2h7v1h-7zM3 3h9v1h-9zM3 4h9v1h-9zM4 5h8v1h-8z"/>
+    <path fill="${look.ring}" d="M5 2h5v1h-5z"/>
+    ${pose.happy ? '<path fill="#f4a6b8" d="M4 5h1v1h-1zM10 5h1v1h-1z"/>' : ""}
+    <path fill="#1b1d1c" d="${eye}"/>
+    ${pose.closed || pose.happy ? "" : '<path fill="#ffffff" d="M7 4h1v1h-1z"/>'}
+    <path fill="${pose.light}" d="M12 3h1v1h-1z"/>
+    <path fill="#1b1d1c" d="M6 8h2v1h-2zM5 9h3v1h-3zM6 10h3v1h-3z"/>
+    <path fill="${look.beak}" d="${pose.beakOpen ? "M3 7h12v1h-12zM5 8h9v1h-9z" : "M3 7h12v1h-12z"}"/>
+    <path fill="${look.shell}" d="${leg.thigh}"/><path fill="#1b1d1c" d="${leg.joint}"/>
+    <path fill="${look.foot}" d="${leg.feet}"/><path fill="${look.sole}" d="${leg.soles}"/>`;
+}
+
+const pond = {t: 0, near: false, cooldown: 0, ducks: {}, petButtons: {}};
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+$("scene").innerHTML = background();
+
+function pondDuck(name, i) {
+  if (!pond.ducks[name]) {
+    pond.ducks[name] = {x: 30 + 120 * i, dir: i ? -1 : 1, frame: 0, emote: null, emoteT: 0, restT: 0,
+                        last: null, beakT: 0, blinkT: 0, told: false, look: LOOKS[i % LOOKS.length]};
+    const b = document.createElement("button");
+    b.className = "pet";
+    b.setAttribute("aria-label", "Pet " + title(name) + " on the screen");
+    b.addEventListener("click", () => emote(pond.ducks[name], "heart", 14));
+    $("pond").appendChild(b);
+    pond.petButtons[name] = b;
+  }
+  return pond.ducks[name];
+}
+function emote(d, kind, ticks) { d.emote = kind; d.emoteT = ticks; d.last = kind; d.beakT = kind === "note" ? ticks : 3; }
+
+function pondTick() {
+  if (!S) return;
+  pond.t += 1;
+  const names = Object.keys(S.ducks);
+  names.forEach((name, i) => {
+    const d = pondDuck(name, i), real = S.ducks[name];
+    const band = real.tiredness in MOODS ? real.tiredness : "unknown";
+    const sleeping = real.asleep || band === "charging";
+    d.offline = !real.connected;
+    if (d.beakT > 0) d.beakT -= 1;
+    if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
+    // Something real happened: it just told its friend something.
+    if (real.just_told && !d.told) emote(d, "bang", 14);
+    d.told = !!real.just_told;
+    if (d.emoteT > 0) { d.emoteT -= 1; if (d.emoteT === 0) d.emote = null; return; }
+    if (sleeping || d.offline || real.paused) {
+      d.frame = 0;
+      if (Math.random() < 0.01) emote(d, sleeping ? "zzz" : "ask", 18);
+      return;
+    }
+    if (d.restT > 0) { d.restT -= 1; d.frame = 0; return; }
+    // Where Reachy sees it in the room, if it can; otherwise it wanders.
+    let target = null;
+    if (real.room_xy) target = Math.max(4, Math.min(176, real.room_xy[0] / 5 * 176));
+    if (target != null && Math.abs(target - d.x) < 4) { d.frame = 0; }
+    else {
+      if (target != null) d.dir = target > d.x ? 1 : -1;
+      else if (Math.random() < 0.015) d.dir = -d.dir;
+      d.frame = 1 - d.frame;
+      d.x += d.dir * 3;
+      if (d.x < 4) { d.x = 4; d.dir = 1; }
+      if (d.x > 176) { d.x = 176; d.dir = -1; }
+    }
+    if (Math.random() < REST[band]) d.restT = 15 + Math.floor(Math.random() * 25);
+    if (Math.random() < 0.0055) {
+      const choices = MOODS[band].filter((m) => m !== d.last);
+      emote(d, choices[Math.floor(Math.random() * choices.length)] || MOODS[band][0], 16);
+    }
+  });
+  // A greeting only when they first meet, at most once every ~40 s, and not always a heart.
+  const [a, b] = names.slice(0, 2).map((n) => pond.ducks[n]);
+  pond.cooldown = Math.max(0, pond.cooldown - 1);
+  if (a && b) {
+    const near = Math.abs(a.x - b.x) < 44;
+    if (near && !pond.near && pond.cooldown === 0 && !a.emote && !b.emote && !a.offline && !b.offline) {
+      a.dir = b.x >= a.x ? 1 : -1; b.dir = -a.dir;
+      if (Math.random() < 0.45) { emote(a, "heart", 16); emote(b, "heart", 16); }
+      else { emote(a, "note", 12); a.restT = 6; b.restT = 10; }
+      pond.cooldown = 235;
+    }
+    pond.near = near;
+  }
+  drawPond();
+}
+
+function drawPond() {
+  const names = Object.keys(S.ducks);
+  const t = pond.t;
+  $("cloudA").setAttribute("transform", `translate(${((Math.floor(t / 6) + 20) % 200) - 20} 12)`);
+  $("cloudB").setAttribute("transform", `translate(${((Math.floor(t / 9) + 120) % 200) - 20} 22)`);
+  $("ripple").setAttribute("fill", Math.floor(t / 4) % 2 ? "#bfe0f0" : "#7fb2d4");
+  const labels = names.slice(0, 2).map((n, i) => {
+    const pct = S.ducks[n].battery_percent == null ? "--" : Math.round(S.ducks[n].battery_percent) + "%";
+    const text = esc(title(n).toUpperCase()) + " " + pct;
+    return i === 0 ? `<text x="10" y="18">${text}</text>` : `<text x="340" y="18" text-anchor="end">${text}</text>`;
+  }).join("");
+  put($("labels"), labels);
+  const scale = $("pond").clientWidth / 350;  // the scene fills the pond's inner box
+  $("ducks").innerHTML = names.map((name, i) => {
+    const d = pondDuck(name, i), real = S.ducks[name];
+    const y = 142 - 16 - 63 - (d.frame ? 2 : 0);
+    const pose = {frame: d.frame, closed: d.emote === "zzz" || d.blinkT > 0 || real.asleep || real.tiredness === "charging",
+                  happy: d.emote === "heart" || d.emote === "note", beakOpen: d.beakT > 0 && d.beakT % 2 === 1,
+                  light: (t + i * 3) % 8 < 4 ? "#e2474b" : "#4a8fd9"};
+    const flip = d.dir < 0 ? `translate(${d.x + 48} ${y}) scale(-3 3)` : `translate(${d.x} ${y}) scale(3)`;
+    let bubble = "";
+    if (d.emote) {
+      const ic = ICONS[d.emote];
+      bubble = `<path fill="${ic.fill}" transform="translate(${d.x + 24 - ic.w * 2} ${y - 4 - ic.h * 4}) scale(4)" d="${ic.d}"/>`;
+    }
+    const pet = pond.petButtons[name];
+    if (pet) Object.assign(pet.style, {left: d.x * scale + "px", top: y * scale + "px",
+                                       width: 48 * scale + "px", height: 63 * scale + "px"});
+    return `<g opacity="${d.offline ? 0.45 : 1}"><g transform="${flip}">${sprite(d.look, pose)}</g>${bubble}</g>`;
+  }).join("");
+}
+
+// ── polling ──────────────────────────────────────────────────────────────────
+function renderAll() {
+  if (!S) return;
+  const names = Object.keys(S.ducks);
+  const watching = S.reachy.watching ? " · watching " + title(S.reachy.watching) : "";
+  $("reachy-text").textContent = "Reachy is " + S.reachy.status.split(" ")[0] + watching;
+  $("reachy").classList.toggle("sim", !!S.sim);
+  if (S.sim) $("reachy-text").textContent += " · SIMULATION";
+  names.forEach(pondDuck);
+  renderCare(); renderSaw(); renderNight();
+}
+async function refresh() {
+  try {
+    const r = await fetch("/api/status", {cache: "no-store"});
+    S = await r.json();
+    $("offline").hidden = true;
+    renderAll();
+    if (reduceMotion) drawPond();
+  } catch (e) { $("offline").hidden = false; }
+}
+refresh();
+setInterval(refresh, 1500);
+if (!reduceMotion) setInterval(pondTick, 170);
+window.addEventListener("resize", () => S && drawPond());
+</script>
+</body>
+</html>

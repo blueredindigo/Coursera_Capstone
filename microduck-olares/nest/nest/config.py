@@ -63,10 +63,11 @@ class Config:
     captioner: CaptionerConfig = field(default_factory=CaptionerConfig)
 
 
+LANDMARK_WORDS = ["sofa", "green chair", "table", "rug", "door", "window", "radiator", "tv stand",
+                  "bed", "kitchen", "hallway", "bookshelf", "plant", "cushion"]
+
 DEFAULT_VOCABULARY = [
-    # landmarks
-    "sofa", "green chair", "table", "rug", "door", "window", "radiator", "tv stand", "bed",
-    "kitchen", "hallway", "bookshelf", "plant", "cushion",
+    *LANDMARK_WORDS,
     # things
     "yellow ball", "red ball", "ball", "plush", "block", "sock", "keys", "shoe", "cat",
     "pinecone", "leaf", "stone", "shell", "toy car", "bottle cap", "treasure",
