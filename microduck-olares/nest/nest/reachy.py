@@ -67,6 +67,14 @@ class ReachyClient:
         response.raise_for_status()
         return response.json() if response.content else None
 
+    async def ping(self) -> bool:
+        """Is the daemon answering? Reachy being switched off is normal, not an error."""
+        try:
+            await self._get("/daemon/status")
+            return True
+        except Exception:
+            return False
+
     async def wake_up(self) -> None:
         await self._post("/move/play/wake_up")
 

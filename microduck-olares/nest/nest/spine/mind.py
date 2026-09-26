@@ -74,6 +74,7 @@ class Mind:
         self.paused = False  # set by the Pond ("leave Ah-Ah alone for now")
         self.asleep = False  # between bedtime and good morning: only sleep
         self.in_bed = False  # went to bed and hasn't stood up since
+        self.quiet = False   # quiet hours: no motion, no sound, whatever the needs say
         self._checks: dict[str, float] = {}  # rumours already gone to look at
         self._last_tick = time.monotonic()
         self._last_health = 0.0
@@ -96,6 +97,14 @@ class Mind:
     @property
     def busy(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    def on_disconnected(self) -> None:
+        """The duck was switched off (or the Wi-Fi dropped). Forget what we believed about its
+        body: after a power cycle it isn't sitting or in bed, and its battery may be new."""
+        self.interrupt()
+        self.sitting = False
+        self.in_bed = False
+        self.tiredness = Tiredness(self.tiredness.t)
 
     def interrupt(self) -> None:
         if self.busy:
@@ -126,6 +135,10 @@ class Mind:
         self._sense(dt)
         self._teach_navigator()
 
+        if self.quiet:
+            if self.busy:
+                self.interrupt()  # quiet hours began mid-behaviour: stop, don't finish it
+            return
         if self.paused or self.busy:
             return
         if self.client.fallen:

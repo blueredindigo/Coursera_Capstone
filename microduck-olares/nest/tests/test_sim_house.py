@@ -10,6 +10,7 @@ def make_nest(tmp_path):
     cfg = load(None)
     cfg.data_dir = tmp_path
     cfg.tick_hz = 5.0
+    cfg.quiet_hours = {"enabled": False}  # tests run at any hour; quiet hours have their own test
     cfg.ducks = [DuckConfig("ah-ah", bed="ah-ah's bed"), DuckConfig("tee-tee", bed="tee-tee's bed")]
     cfg.landmarks = {"sofa": (1.0, 3.2), "green chair": (3.4, 2.6), "ah-ah's bed": (2.2, 0.4),
                      "tee-tee's bed": (2.8, 0.4)}

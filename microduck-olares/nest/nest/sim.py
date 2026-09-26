@@ -37,6 +37,7 @@ class SimDuck:
     sounds: list[str] = field(default_factory=list)
     skills_done: list[str] = field(default_factory=list)
     subscribed: bool = False
+    switched_on: bool = True
     tof_on: bool = False
     deliver: Callable[[str], None] | None = None
 
@@ -58,6 +59,16 @@ class SimWorld:
         return duck
 
     # ── the JSON-RPC face of one duck ──────────────────────────────────────────
+
+    def power(self, name: str, on: bool) -> None:
+        """Flip a duck's power switch: its connection drops, and it comes back when on."""
+        duck = self.ducks[name]
+        duck.switched_on = on
+        if on:
+            duck.powered, duck.sitting, duck.subscribed, duck.tof_on = True, False, False, False
+
+    def powered(self, name: str):
+        return lambda: self.ducks[name].switched_on
 
     def handler(self, name: str) -> Callable[[str, Callable[[str], None]], None]:
         def handle(line: str, deliver: Callable[[str], None]) -> None:
@@ -215,6 +226,10 @@ class SimReachy:
         self.positions: dict[str, tuple[float, float]] = {}
         self.head_yaw = 0.0
         self.antennas = (0.0, 0.0)
+        self.on = True  # tests switch it off and on
+
+    async def ping(self) -> bool:
+        return self.on
 
     def see(self, world: SimWorld) -> None:
         self.positions = {name: (d.x, d.y) for name, d in world.ducks.items()}

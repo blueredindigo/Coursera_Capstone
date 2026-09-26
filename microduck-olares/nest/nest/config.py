@@ -61,6 +61,10 @@ class Config:
     landmarks: dict[str, tuple[float, float]] = field(default_factory=dict)
     vocabulary: list[str] = field(default_factory=list)
     captioner: CaptionerConfig = field(default_factory=CaptionerConfig)
+    # Quiet hours: no motion or sound from 20:00 to 09:00 unless you tap Good morning.
+    quiet_hours: dict[str, Any] = field(default_factory=dict)
+    # The goodnight routine starts this long before quiet hours, so the ducks are in bed by then.
+    bedtime_lead_min: int = 15
 
 
 LANDMARK_WORDS = ["sofa", "green chair", "table", "rug", "door", "window", "radiator", "tv stand",
@@ -110,4 +114,7 @@ def load(path: str | Path | None) -> Config:
         vocabulary=list(DEFAULT_VOCABULARY) + [w for w in raw.get("vocabulary", {})
                                                .get("words", []) if w not in DEFAULT_VOCABULARY],
         captioner=CaptionerConfig(**raw.get("captioner", {})),
+        quiet_hours={k: v for k, v in raw.get("quiet_hours", {}).items()
+                     if k != "bedtime_lead_min"},
+        bedtime_lead_min=int(raw.get("quiet_hours", {}).get("bedtime_lead_min", 15)),
     )

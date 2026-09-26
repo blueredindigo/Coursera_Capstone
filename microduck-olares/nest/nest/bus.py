@@ -73,6 +73,7 @@ class DuckBus:
         self.distance: Callable[[str, str], float | None] = lambda a, b: None
         self.sees_a_duck: Callable[[str], bool] = lambda name: False
         self.rssi: Callable[[str, str], float | None] = lambda a, b: None
+        self.present: Callable[[str], bool] = lambda name: True
         self._seq: dict[str, int] = {}
 
     def next_seq(self, speaker: str) -> int:
@@ -81,6 +82,8 @@ class DuckBus:
 
     def in_earshot(self, a: str, b: str) -> str | None:
         """Why these two could hear each other right now, or None if they could not."""
+        if not (self.present(a) and self.present(b)):
+            return None  # a duck that is switched off hears nothing; the message waits
         distance = self.distance(a, b)
         if distance is not None and distance <= self.earshot.max_m:
             return f"{distance:.1f} m apart in Reachy's view"

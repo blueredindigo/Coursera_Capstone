@@ -48,6 +48,8 @@ class Transport:
         self.connected = asyncio.Event()
         self.status = "idle"
         self._stopping = False
+        self.max_backoff = 30.0
+        self._last_error: str | None = None
 
     def attach(self, rpc: Rpc) -> None:
         self.rpc = rpc
@@ -64,7 +66,12 @@ class Transport:
                 raise
             except Exception as exc:  # the network is allowed to fail; the Nest is not
                 self.status = f"down: {exc}"
-                logger.warning("%s: %s", self.name, exc)
+                # Once per change, not once per retry: a duck off for the night would otherwise
+                # write a warning every 30 s until morning.
+                was_up = self.connected.is_set()  # a drop after a good session always warns
+                (logger.warning if was_up or self.status != self._last_error else logger.debug)(
+                    "%s: %s", self.name, exc)
+                self._last_error = self.status
             finally:
                 self.connected.clear()
                 if self.rpc:
@@ -72,7 +79,9 @@ class Transport:
             if self._stopping:
                 break
             await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, 30.0)
+            # A duck switched off for the night is retried at most every 30 s, forever: when it
+            # is switched back on, it is picked up within half a minute.
+            backoff = min(backoff * 2, self.max_backoff)
 
     async def stop(self) -> None:
         self._stopping = True
@@ -270,12 +279,16 @@ class UnixSocketTransport(Transport):
 class LoopbackTransport(Transport):
     """An in-process channel to a simulated duck (`nest.sim`). Used by `--sim` and the tests."""
 
-    def __init__(self, name: str, handler: Callable[[str, Callable[[str], None]], None]):
+    def __init__(self, name: str, handler: Callable[[str, Callable[[str], None]], None],
+                 powered: Callable[[], bool] = lambda: True):
         super().__init__(name)
         self._handler = handler
+        self._powered = powered  # the simulated power switch
         self._stop = asyncio.Event()
 
     async def _session(self) -> None:
+        if not self._powered():
+            raise ConnectionError("switched off")
         loop = asyncio.get_running_loop()
 
         def deliver(line: str) -> None:
@@ -289,7 +302,10 @@ class LoopbackTransport(Transport):
             self.rpc.bind(send_line)
         self.status = "connected"
         self.connected.set()
-        await self._stop.wait()
+        while not self._stop.is_set():
+            if not self._powered():
+                raise ConnectionError("switched off")
+            await asyncio.sleep(0.1)
 
     async def stop(self) -> None:
         await super().stop()

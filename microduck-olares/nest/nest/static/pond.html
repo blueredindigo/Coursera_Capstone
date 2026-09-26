@@ -82,6 +82,10 @@ nav.tabs button[aria-selected="true"]{background:var(--teal);color:#fff}
 [role="tabpanel"][hidden]{display:none}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 .offline{padding:10px 12px;border-radius:12px;background:#fbeee4;color:#7a3310;font-size:14px}
+.quietbar{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:14px;background:var(--night);color:#eef1f6;font-size:14px}
+.quietbar[hidden]{display:none}
+.routines{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.routines li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:6px}
 </style>
 </head>
 <body>
@@ -98,6 +102,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
     <svg id="scene" viewBox="0 0 350 142" shape-rendering="crispEdges" role="img" aria-label="The pond: the two ducks walking about"></svg>
   </div>
   <p class="offline" id="offline" hidden>The Nest isn't answering. Is the Jetson on?</p>
+  <p class="quietbar" id="quiet" role="status" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <span id="quiet-text"></span>
+  </p>
 
   <!-- ── Care ─────────────────────────────────────────────────────────────── -->
   <section role="tabpanel" id="panel-care" aria-labelledby="tab-care">
@@ -164,6 +172,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
       <div class="packs" role="radiogroup" aria-label="Which pack went in" id="packs"></div>
       <button class="big" id="log"></button>
       <p class="ok" role="status" aria-live="polite" id="logged"></p>
+    </section>
+    <section class="card" aria-label="Routines">
+      <h2>Routines</h2>
+      <p class="muted" style="margin:0">What the Nest does on its own. A robot that's switched off is fine: the routine waits for it, or skips and says why.</p>
+      <ul class="routines" id="routines"></ul>
     </section>
   </section>
 </div>
@@ -239,12 +252,12 @@ function renderCare() {
   put($("duck-tabs"), names.map((n) => {
     const x = S.ducks[n], b = BANDS[x.tiredness] || BANDS.unknown;
     const pct = x.battery_percent == null ? "–" : Math.round(x.battery_percent) + "%";
-    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${pct} · ${esc(x.connected ? b.short : "offline")}</small></button>`;
+    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${pct} · ${esc(x.connected ? b.short : "off")}</small></button>`;
   }).join(""));
 
   const pct = d.battery_percent == null ? "–" : Math.round(d.battery_percent);
   const doing = d.paused ? "paused by you" : d.asleep ? "asleep" : (d.behaviour || "deciding what to do").replace(/_/g, " ");
-  const block = !d.connected ? `${title(picked)} isn't connected (${d.transport}).`
+  const block = !d.connected ? `${title(picked)} is switched off or out of reach. It picks up where it left off when it's back on.`
     : d.fallen ? "It has fallen over. It gets itself up; the Nest waits."
     : d.safety && !d.paused ? "Won't walk right now: " + d.safety + "." : "";
   put($("duck-card"), `
@@ -261,11 +274,13 @@ function renderCare() {
 
   $("ask-title").textContent = "Ask " + title(picked) + " to…";
   $("pause").textContent = d.paused ? "Resume" : "Pause";
-  const off = d.paused || !d.connected;
+  const quiet = S.quiet && S.quiet.now;
+  const off = d.paused || !d.connected || quiet;
   put($("actions"), ACTIONS.map((a) => {
     const label = typeof a.label === "function" ? a.label(d, friend) : a.label;
     const primary = a.primary || (a.primaryIf && a.primaryIf(d));
-    const hint = d.paused ? "Paused: tap Resume first" : !d.connected ? "Not connected" : a.hint(d);
+    const hint = quiet ? "Quiet hours: Good morning wakes them" : d.paused ? "Paused: tap Resume first"
+      : !d.connected ? "Switched off" : a.hint(d);
     return `<button class="act${primary && !off ? " primary" : ""}" data-action="${a.key}" aria-disabled="${off}"><b>${esc(label)}</b><span>${esc(hint)}</span></button>`;
   }).join(""));
 
@@ -350,10 +365,13 @@ $("ask").addEventListener("click", async () => {
 // ── Night ────────────────────────────────────────────────────────────────────
 const pit = {duck: null, pack: "A"};
 function renderNight() {
-  const asleep = Object.values(S.ducks).some((d) => d.asleep) || S.reachy.status === "asleep";
+  const quietNow = S.quiet && S.quiet.now;
+  const asleep = quietNow || Object.values(S.ducks).some((d) => d.asleep) || S.reachy.status === "asleep";
   $("nightcard").classList.toggle("asleep", asleep);
   $("night-title").textContent = asleep ? "Everyone's asleep" : "Bedtime";
-  $("night-hint").textContent = asleep
+  $("night-hint").textContent = quietNow
+    ? "It's " + S.quiet.text + ". Nothing will move or make a sound, even if a robot is switched on early. Good morning wakes them anyway."
+    : asleep
     ? "The ducks are on their beds and Reachy is asleep too. Nothing will move until morning."
     : "Reachy looks at each duck, wiggles goodnight, and the ducks walk to their beds and stay there until morning.";
   $("night-button").textContent = asleep ? "Good morning" : "Start bedtime";
@@ -369,6 +387,8 @@ function renderNight() {
     return `<button class="pack" role="radio" data-pack="${esc(p)}" aria-checked="${p === pit.pack}"><b>Pack ${esc(p)}</b><span>${esc(where)}</span>${health}</button>`;
   }).join(""));
   $("log").textContent = `Log: pack ${pit.pack} into ${title(pit.duck)}`;
+  const when = (iso) => iso ? new Date(iso).toLocaleString([], {weekday: "short", hour: "2-digit", minute: "2-digit"}) : "–";
+  put($("routines"), (S.routines || []).map((r) => `<li><span><b>${esc(r.name)}</b><br><span class="muted">${esc(r.last_result)}</span></span><span class="muted" style="text-align:right">next<br>${esc(when(r.next))}</span></li>`).join(""));
 }
 $("night-button").addEventListener("click", async (e) => {
   const asleep = e.currentTarget.dataset.asleep === "true";
@@ -484,7 +504,7 @@ function pondTick() {
   names.forEach((name, i) => {
     const d = pondDuck(name, i), real = S.ducks[name];
     const band = real.tiredness in MOODS ? real.tiredness : "unknown";
-    const sleeping = real.asleep || band === "charging";
+    const sleeping = real.asleep || band === "charging" || (S.quiet && S.quiet.now);
     d.offline = !real.connected;
     if (d.beakT > 0) d.beakT -= 1;
     if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
@@ -548,7 +568,7 @@ function drawPond() {
   $("ducks").innerHTML = names.map((name, i) => {
     const d = pondDuck(name, i), real = S.ducks[name];
     const y = 142 - 16 - 63 - (d.frame ? 2 : 0);
-    const pose = {frame: d.frame, closed: d.emote === "zzz" || d.blinkT > 0 || real.asleep || real.tiredness === "charging",
+    const pose = {frame: d.frame, closed: d.emote === "zzz" || d.blinkT > 0 || real.asleep || real.tiredness === "charging" || (S.quiet && S.quiet.now),
                   happy: d.emote === "heart" || d.emote === "note", beakOpen: d.beakT > 0 && d.beakT % 2 === 1,
                   light: (t + i * 3) % 8 < 4 ? "#e2474b" : "#4a8fd9"};
     const flip = d.dir < 0 ? `translate(${d.x + 48} ${y}) scale(-3 3)` : `translate(${d.x} ${y}) scale(3)`;
@@ -569,7 +589,12 @@ function renderAll() {
   if (!S) return;
   const names = Object.keys(S.ducks);
   const watching = S.reachy.watching ? " · watching " + title(S.reachy.watching) : "";
-  $("reachy-text").textContent = "Reachy is " + S.reachy.status.split(" ")[0] + watching;
+  const rs = S.reachy.online === false ? "off" : S.reachy.status.startsWith("resting") ? "resting" : S.reachy.status.split(" ")[0];
+  $("reachy-text").textContent = "Reachy is " + rs + (rs === "awake" ? watching : "");
+  $("quiet").hidden = !(S.quiet && S.quiet.now);
+  if (S.quiet) $("quiet-text").textContent = S.quiet.now
+    ? S.quiet.text.charAt(0).toUpperCase() + S.quiet.text.slice(1) + ": no moving, no sounds."
+    : "";
   $("reachy").classList.toggle("sim", !!S.sim);
   if (S.sim) $("reachy-text").textContent += " · SIMULATION";
   names.forEach(pondDuck);

@@ -12,7 +12,7 @@ movement: the Nest proposes, and each duck's controller and safety decide.
 ```bash
 pip install -e ".[dev]"
 python -m nest --sim            # then open http://localhost:8090
-pytest                          # 28 tests
+pytest                          # 31 tests
 ```
 
 `--sim` runs a simulated living room: two ducks whose batteries drain, who walk when asked and
@@ -55,6 +55,28 @@ nest/
   sim.py       the simulated living room
   calibrate.py floor calibration for Reachy's view
 ```
+
+## Switching things off (self-healing)
+
+Reachy and the ducks being switched off is normal, not a fault. From 8 pm they often are, and
+they may come back after 9 the next morning.
+
+- **Quiet hours** (`[quiet_hours]`, default 20:00–09:00): no motion and no sound, even from a
+  robot switched on early. Pond actions say "quiet hours". **Good morning** lifts it until the
+  next bedtime.
+- **Routines** (goodnight at 19:45, good morning at 09:00, the battery diary) run with whoever is
+  on. One that needs a device waits for it and catches up when it comes back, or is recorded as
+  skipped with the reason. One that raises is retried with backoff. The Pond's Night tab shows
+  each one's last result.
+- **Ducks** reconnect on their own (retrying at most every 30 s), and each gets one "good
+  morning" the first time it's switched on after quiet hours. When a duck drops, the Nest forgets
+  what it believed about its body (sitting, in bed, battery trend).
+- **Reachy** is watched every 20 s. When it comes back it's woken, unless it's quiet hours or
+  bedtime. Its camera loop waits for it rather than dying.
+- **Every loop restarts itself** if it crashes, and the Nest itself runs under systemd
+  `Restart=always`. It works out quiet hours from the clock, so a reboot at 11 pm comes back
+  quiet.
+- Messages between ducks wait until both are switched on and within earshot.
 
 ## Things worth knowing
 

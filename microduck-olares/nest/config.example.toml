@@ -44,6 +44,17 @@ position = [2.5, 0.0]          # where Reachy sits in your room frame, metres
 facing = 1.5708                # room heading its body_yaw = 0 points along, radians
 homography = []               # filled in by the floor calibration
 
+# ── quiet hours: the toddler's bedtime ───────────────────────────────────────
+# No motion and no sound from `start` to `end` (the Jetson's local time), even if a robot is
+# switched on early. Switching Reachy and the ducks off during this time is normal: nothing
+# breaks, routines wait or skip, and each robot picks up where it left off when switched on.
+# Tapping "Good morning" in the Pond lifts quiet hours until the next bedtime.
+[quiet_hours]
+enabled = true
+start = "20:00"
+end = "09:00"
+bedtime_lead_min = 15          # the goodnight ritual starts this long before `start`
+
 # ── the tiredness gauge: battery percent band edges ──────────────────────────
 [tiredness]
 high = 70

@@ -19,6 +19,7 @@ import asyncio
 import logging
 import math
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,7 @@ from .config import LANDMARK_WORDS, Config, DuckConfig
 from .duck.client import DuckClient
 from .duck.transport import LoopbackTransport, Transport, UnixSocketTransport, WebRtcTransport
 from .reachy import ReachyGaze
+from .routines import QuietHours, Routine, Routines, daily_at, every
 from .spine.mind import BEHAVIOURS, Mind, go_to_bed
 from .spine.personality import Personality
 from .spine.safety import SafetyGate, SafetyLimits
@@ -70,6 +72,12 @@ class Nest:
         self.reachy: Any = None
         self.gaze: ReachyGaze | None = None
         self.reachy_status = "off"
+        self.reachy_online = False
+        self.watchdog_s = 3.0 if sim else 20.0
+        self.quiet = QuietHours.from_config(config.quiet_hours)
+        self.clock = datetime.now  # tests replace this to live through a night in seconds
+        self.routines = Routines(self.available, clock=lambda: self.clock())
+        self._greeted: dict[str, str] = {}  # duck -> date of its first-up greeting
         self.reachy_focus: str | None = None
         self._reachy_moved = 0.0
         self._tasks: list[asyncio.Task] = []
@@ -94,12 +102,15 @@ class Nest:
                            on_delivered=self._delivered)
         self.bus.distance = lambda a, b: self.room.distance(a, b)
         self.bus.sees_a_duck = lambda name: self.ducks[name].sees_a_duck()
+        # Only ducks that are switched on can hear anything; the message waits for them.
+        self.bus.present = lambda name: self.ducks[name].connected
 
     # ── construction helpers ───────────────────────────────────────────────────
 
     def _transport(self, duck: DuckConfig) -> Transport:
         if self.sim:
-            return LoopbackTransport(duck.name, self.world.handler(duck.name))
+            return LoopbackTransport(duck.name, self.world.handler(duck.name),
+                                     powered=self.world.powered(duck.name))
         if duck.transport == "unix":
             return UnixSocketTransport(duck.name, duck.socket)
         return WebRtcTransport(duck.name, duck.host, duck.signalling_port, duck.keep_video)
@@ -120,6 +131,33 @@ class Nest:
             ctx.bed_xy = lambda b=bed: self.room.landmarks.get(b) if b else None
             ctx.nest_xy = self._nest_spot
             ctx.tell_friend = lambda *a, n=name, **k: self.tell_friend(n, *a, **k)
+
+    async def _first_up(self, name: str) -> None:
+        """A duck switched on after quiet hours gets one "good morning" a day, whenever that is.
+        Switched on during quiet hours, it is left asleep and silent."""
+        mind = self.minds[name]
+        today = self.clock().date().isoformat()
+        if self.is_quiet():
+            mind.asleep = True
+            return
+        if self._greeted.get(name) == today or mind.asleep:
+            return
+        self._greeted[name] = today
+        try:
+            await mind.client.look(1.0, 0.0, 0.4)
+            await mind.say("greet")
+            self._event(name, "up and about: good morning")
+        except Exception as exc:
+            logger.info("%s: morning greeting skipped: %s", name, exc)
+
+    def available(self, device: str) -> bool:
+        if device == "reachy":
+            return self.reachy_online
+        client = self.ducks.get(device)
+        return bool(client and client.connected)
+
+    def is_quiet(self) -> bool:
+        return self.quiet.is_quiet(self.clock())
 
     def _nest_spot(self) -> tuple[float, float] | None:
         """Where "come here" leads: the `nest` landmark if you set one, else 0.8 m out in front
@@ -144,15 +182,35 @@ class Nest:
         for name, client in self.ducks.items():
             self._tasks.append(asyncio.ensure_future(client.transport.run()))
             self._tasks.append(asyncio.ensure_future(self._on_connect_loop(name)))
-        await self._start_reachy()
-        self._tasks.append(asyncio.ensure_future(self._spine_loop()))
-        self._tasks.append(asyncio.ensure_future(self._overseer_loop()))
+        self._setup_reachy()
+        self._setup_routines()
+        loops = [("spine", self._spine_loop), ("overseer", self._overseer_loop),
+                 ("reachy watchdog", self._reachy_watchdog),
+                 ("routines", self.routines.run_forever)]
         if self.config.captioner.enabled and not self.sim:
-            self._tasks.append(asyncio.ensure_future(self._eyes_loop()))
+            loops.append(("eyes", self._eyes_loop))
         if self.sim:
-            self._tasks.append(asyncio.ensure_future(self._sim_loop()))
+            loops.append(("sim", self._sim_loop))
         elif self.config.reachy.camera:
-            self._tasks.append(asyncio.ensure_future(self._room_eye_loop()))
+            loops.append(("room eye", self._room_eye_loop))
+        for name, loop in loops:
+            self._tasks.append(asyncio.ensure_future(self._keep_running(name, loop)))
+
+    async def _keep_running(self, name: str, loop) -> None:
+        """Self-healing: a loop that crashes is logged and restarted, never lost until reboot."""
+        delay = 2.0
+        while True:
+            started = time.monotonic()
+            try:
+                await loop()
+                return  # a loop that ends on purpose (room eye switched off) stays ended
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("%s loop crashed; restarting", name)
+                self._event("nest", f"{name} loop crashed ({exc}); restarting")
+            delay = 2.0 if time.monotonic() - started > 300 else min(delay * 2, 120.0)
+            await asyncio.sleep(delay)
 
     async def stop(self) -> None:
         for mind in self.minds.values():
@@ -180,32 +238,91 @@ class Nest:
                     self._event(name, f"connected, but setup failed ({exc}); retrying")
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 30.0)
+            await self._first_up(name)
             while client.transport.connected.is_set():
                 await asyncio.sleep(0.5)
-            self._event(name, "disconnected")
+            self.minds[name].on_disconnected()
+            self._event(name, "switched off or out of reach")
 
-    async def _start_reachy(self) -> None:
+    def _setup_reachy(self) -> None:
         if self.sim:
             self.reachy = self.world.reachy
         elif self.config.reachy.enabled:
             from .reachy import ReachyClient
 
             self.reachy = ReachyClient(self.config.reachy.url)
+        if self.reachy is not None:
+            self.gaze = ReachyGaze(self.reachy)
+
+    async def _reachy_watchdog(self) -> None:
+        """Notices Reachy being switched off and on, and wakes it when it may be awake.
+
+        Off is a normal state, not an error: the status just says so, and when it answers
+        again it is woken, unless it is quiet hours or bedtime, when it is left resting."""
         if self.reachy is None:
             return
-        self.gaze = ReachyGaze(self.reachy)
-        try:
-            await self.reachy.wake_up()
-            self.reachy_status = "awake"
-        except Exception as exc:
-            self.reachy_status = f"unreachable: {exc}"
-            logger.warning("Reachy: %s", exc)
+        while True:
+            online = await self.reachy.ping()
+            if not online:
+                if self.reachy_online:
+                    self._event("reachy", "switched off")
+                self.reachy_online = False
+                self.reachy_status = "off"
+            else:
+                came_back = not self.reachy_online
+                self.reachy_online = True
+                resting = self.is_quiet() or any(m.asleep for m in self.minds.values())
+                if resting:
+                    self.reachy_status = "asleep" if not self.is_quiet() else "resting (quiet hours)"
+                elif came_back or not self.reachy_status.startswith("awake"):
+                    if await self._reachy_try("wake-up", self.reachy.wake_up()):
+                        self.reachy_status = "awake"
+                        self._event("reachy", "switched on: awake")
+            await asyncio.sleep(self.watchdog_s)
+
+    def _setup_routines(self) -> None:
+        q = self.quiet
+        lead = timedelta(minutes=self.config.bedtime_lead_min)
+        goodnight = (datetime.combine(self.clock().date(), q.start) - lead).time()
+        self.routines.add(Routine("goodnight", self._routine_goodnight, daily_at(goodnight),
+                                  catch_up=lead + timedelta(minutes=5)))
+        self.routines.add(Routine("good morning", self._routine_morning, daily_at(q.end),
+                                  catch_up=timedelta(hours=12)))
+        self.routines.add(Routine("battery diary", self._routine_battery_sample,
+                                  every(timedelta(minutes=4)), catch_up=timedelta(minutes=4)))
+        # Coming up inside quiet hours (a reboot at 11 pm): the ducks are already asleep.
+        if self.is_quiet():
+            for mind in self.minds.values():
+                mind.asleep = True
+
+    async def _routine_goodnight(self) -> None:
+        """A little before quiet hours: the goodnight ritual with whoever is switched on.
+        Anyone already off is simply skipped; nothing waits for them."""
+        if not self.quiet.enabled:
+            return
+        self.quiet.override_until = None  # a "Good morning" lift ends at bedtime
+        await self.bedtime()
+
+    async def _routine_morning(self) -> None:
+        self.quiet.override_until = None
+        for mind in self.minds.values():
+            mind.asleep = False
+        self._event("nest", "morning: quiet hours are over")
+        for name, client in self.ducks.items():
+            if client.connected:  # switched on early: say good morning now
+                await self._first_up(name)
+
+    async def _routine_battery_sample(self) -> None:
+        for name, client in self.ducks.items():
+            if client.connected:
+                self.batteries.sample(name, client.health.battery_percent)
 
     async def _spine_loop(self) -> None:
         period = 1.0 / max(self.config.tick_hz, 0.1)
-        last_sample = 0.0
         while True:
+            quiet = self.is_quiet()
             for mind in self.minds.values():
+                mind.quiet = quiet
                 try:
                     await mind.tick()
                 except Exception:
@@ -214,17 +331,14 @@ class Nest:
                 await self.bus.pump()
             except Exception:
                 logger.exception("bus pump failed")
-            if time.time() - last_sample > 240:
-                last_sample = time.time()
-                for name, client in self.ducks.items():
-                    self.batteries.sample(name, client.health.battery_percent)
             await asyncio.sleep(period)
 
     async def _overseer_loop(self) -> None:
         """Reachy watches the ducks: the tired one first, then whoever is up to something."""
         while True:
             await asyncio.sleep(2.0)
-            if self.gaze is None or not self.reachy_status.startswith("awake"):
+            if (self.gaze is None or not self.reachy_online or self.is_quiet()
+                    or not self.reachy_status.startswith("awake")):
                 continue
             focus, expression = self._choose_focus()
             now = time.monotonic()
@@ -266,23 +380,45 @@ class Nest:
         from .reachy import ReachyCamera
         from .vision.duck_detector import DuckDetector
 
-        if not self.config.reachy.detector_model or not self.homography.ready:
-            self._event("reachy", "room eye off: needs detector_model and a floor calibration")
+        if (not self.config.reachy.detector_model or not self.homography.ready
+                or not Path(self.config.reachy.detector_model).exists()):
+            self._event("reachy", "room eye off: needs the detector model file and a floor "
+                                  "calibration (see SETUP.md)")
             return
         loop = asyncio.get_running_loop()
-        camera = await loop.run_in_executor(None, ReachyCamera)
         detector = await loop.run_in_executor(None, DuckDetector,
                                               self.config.reachy.detector_model,
                                               self.config.reachy.detector_threshold)
+        camera = None
         while True:
-            frame = await loop.run_in_executor(None, camera.frame)
-            if frame is not None:
-                boxes = await loop.run_in_executor(None, detector.detect, frame)
-                points = [self.homography.to_floor(*b.foot) for b in boxes]
-                self.tracker.update(points)
-                for track in self.tracker.tracks:
-                    if track.name:
-                        self.room.set_duck(track.name, track.x, track.y, at=track.at)
+            if not self.reachy_online or self.is_quiet():
+                if camera is not None:
+                    camera.close()
+                    camera = None
+                await asyncio.sleep(10.0)
+                continue
+            try:
+                if camera is None:
+                    camera = await loop.run_in_executor(None, ReachyCamera)
+                frame = await loop.run_in_executor(None, camera.frame)
+                if frame is not None:
+                    boxes = await loop.run_in_executor(None, detector.detect, frame)
+                    points = [self.homography.to_floor(*b.foot) for b in boxes]
+                    self.tracker.update(points)
+                    for track in self.tracker.tracks:
+                        if track.name:
+                            self.room.set_duck(track.name, track.x, track.y, at=track.at)
+            except Exception as exc:
+                # Reachy unplugged mid-frame: drop the camera and try again once it's back.
+                logger.info("room eye: %s", exc)
+                if camera is not None:
+                    try:
+                        camera.close()
+                    except Exception:
+                        pass
+                camera = None
+                await asyncio.sleep(10.0)
+                continue
             await asyncio.sleep(0.33)
 
     async def _eyes_loop(self) -> None:
@@ -295,6 +431,8 @@ class Nest:
         try:
             while True:
                 await asyncio.sleep(2.0)
+                if self.is_quiet():
+                    continue
                 for name, mind in self.minds.items():
                     if mind.behaviour not in ("look_around", "investigate", "wander"):
                         continue
@@ -348,6 +486,8 @@ class Nest:
 
     async def _perform(self, speaker: str, listener: str, message: DuckMessage) -> None:
         """Turn to face the listener, chirp the phrase, and let the listener answer."""
+        if self.is_quiet():
+            return  # delivered, but nobody chirps during quiet hours
         talker, hearer = self.minds[speaker], self.minds[listener]
         talker.interrupt()
         sighting = talker.client.sighting
@@ -445,6 +585,9 @@ class Nest:
             return False, f"{name} isn't connected right now."
         if mind.paused:
             return False, f"{name} is paused. Tap Resume first."
+        if self.is_quiet():
+            return False, (f"Quiet hours until {self.quiet.end.strftime('%H:%M')}. "
+                           "Tap Good morning to wake them anyway.")
         if mind.asleep and action != "go_to_bed":
             return False, f"{name} is asleep. Say good morning first."
         behaviour, message = self.ACTIONS[action]
@@ -461,7 +604,7 @@ class Nest:
         for name, mind in self.minds.items():
             mind.interrupt()
             mind.asleep = True
-            if mind.tiredness.band != Band.CHARGING:
+            if mind.client.connected and mind.tiredness.band != Band.CHARGING:
                 mind._start("go_to_bed", go_to_bed(mind))
         for name in self.minds:
             xy = self.room.duck(name)
@@ -483,15 +626,25 @@ class Nest:
             return False
 
     async def wake(self) -> None:
+        if self.is_quiet():
+            self.quiet.lift_until_bedtime(self.clock())  # you decided: awake until the next bedtime
         for mind in self.minds.values():
             mind.asleep = False
             mind.interrupt()
         if self.reachy and await self._reachy_try("wake-up", self.reachy.wake_up()):
             self.reachy_status = "awake"
-        best = max(self.minds.values(), key=lambda m: m.tiredness.percent or 0)
-        await best.stand()
-        await best.say("greet")
-        self._event(best.name, "first up: good morning")
+        awake = [m for m in self.minds.values() if m.client.connected]
+        if not awake:
+            self._event("nest", "good morning (the ducks are still switched off)")
+            return
+        best = max(awake, key=lambda m: m.tiredness.percent or 0)
+        try:
+            await best.stand()
+            await best.say("greet")
+            self._greeted[best.name] = self.clock().date().isoformat()
+            self._event(best.name, "first up: good morning")
+        except Exception as exc:
+            self._event(best.name, f"good morning didn't reach it ({exc})")
 
     def status(self) -> dict[str, Any]:
         ducks = {}
@@ -521,7 +674,10 @@ class Nest:
                 "events": [{"at": t, "text": x} for t, x in list(mind.events)[-8:]],
             }
         return {"ducks": ducks, "reachy": {"status": self.reachy_status,
+                                           "online": self.reachy_online,
                                            "watching": self.reachy_focus},
+                "quiet": {"now": self.is_quiet(), "text": self.quiet.describe(self.clock())},
+                "routines": self.routines.status(),
                 "messages": self.bus.recent(), "pending_messages": len(self.bus.pending),
                 "batteries": self.batteries.health(), "feed": self.feed[-30:],
                 "landmarks": sorted(self.room.landmarks), "sim": self.sim,
