@@ -36,6 +36,7 @@ class ReachyConfig:
     position: tuple[float, float] = (0.0, 0.0)
     facing: float = 1.5708
     homography: list[list[float]] | None = None
+    view_range: float = 6.0        # m: the floor map trusts Reachy's view this far out
 
 
 @dataclass
@@ -45,6 +46,7 @@ class CaptionerConfig:
     model: str = "qwen2.5vl:3b"
     every_s: float = 20.0                  # per duck, and only while it is looking around
     min_confidence: float = 0.5
+    reachy_every_s: float = 600.0          # Reachy's diary: one look at the room this often
 
 
 @dataclass
@@ -65,6 +67,10 @@ class Config:
     quiet_hours: dict[str, Any] = field(default_factory=dict)
     # The goodnight routine starts this long before quiet hours, so the ducks are in bed by then.
     bedtime_lead_min: int = 15
+    # The floor map (fog of war): the area it covers in the room frame, x0 y0 x1 y1 metres.
+    # Empty: taken from the walkthrough's floor plan, or else from the landmarks.
+    map_bounds: tuple[float, float, float, float] | None = None
+    map_cell: float = 0.05
 
 
 LANDMARK_WORDS = ["sofa", "green chair", "table", "rug", "door", "window", "radiator", "tv stand",
@@ -117,4 +123,6 @@ def load(path: str | Path | None) -> Config:
         quiet_hours={k: v for k, v in raw.get("quiet_hours", {}).items()
                      if k != "bedtime_lead_min"},
         bedtime_lead_min=int(raw.get("quiet_hours", {}).get("bedtime_lead_min", 15)),
+        map_bounds=tuple(raw["map"]["bounds"]) if raw.get("map", {}).get("bounds") else None,
+        map_cell=float(raw.get("map", {}).get("cell", 0.05)),
     )

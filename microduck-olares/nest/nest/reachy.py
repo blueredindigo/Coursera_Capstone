@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,10 @@ logger = logging.getLogger(__name__)
 HEAD_YAW_LIMIT = 0.6      # rad
 HEAD_PITCH_LIMIT = 0.35   # rad
 BODY_YAW_LIMIT = 2.6      # rad
+# The watch pose: body and head straight out from the TV stand, head tipped a little down to
+# the floor. The floor calibration is taken in this pose (`python -m nest.calibrate snapshot`
+# puts Reachy in it first), so Reachy's camera maps onto the floor only while it's here.
+WATCH_PITCH = -0.15       # rad
 
 # Antenna poses, radians (left, right). Positive raises, by Reachy's convention for these demos;
 # check on your robot and flip ANTENNA_SIGN if "perk" looks like "droop".
@@ -110,8 +115,31 @@ class ReachyGaze:
     def __init__(self, reachy: Any):
         self.reachy = reachy
         self.body_yaw = 0.0
+        self.head_yaw = 0.0
+        self.pitch = WATCH_PITCH
+        self.moved_at: float | None = None  # unknown pose until the Nest has moved it once
 
-    async def look_at_bearing(self, yaw: float, pitch: float = -0.15,
+    def at_watch_pose(self, settle_s: float = 1.5) -> bool:
+        """Is Reachy looking straight out at the floor, still, as it was when calibrated?"""
+        return (self.moved_at is not None and time.monotonic() - self.moved_at >= settle_s
+                and abs(self.body_yaw) < 0.02 and abs(self.head_yaw) < 0.02
+                and abs(self.pitch - WATCH_PITCH) < 0.02)
+
+    async def watch(self, duration: float = 1.5) -> None:
+        """Back to the watch pose, where the floor map and the room eye work: body and head
+        both straight. (Looking at bearing 0 isn't enough after a big turn: the head alone
+        would cover it and leave the body turned.)"""
+        self.moved_at = None
+        await self.reachy.goto(head={"pitch": WATCH_PITCH, "yaw": 0.0},
+                               antennas=ANTENNAS["neutral"], body_yaw=0.0, duration=duration)
+        self.body_yaw, self.head_yaw, self.pitch = 0.0, 0.0, WATCH_PITCH
+        self.moved_at = time.monotonic() + duration
+
+    def forget_pose(self) -> None:
+        """Reachy was switched off, or played a move of its own: its pose is unknown again."""
+        self.moved_at = None
+
+    async def look_at_bearing(self, yaw: float, pitch: float = WATCH_PITCH,
                               antennas: str | None = None, duration: float = 1.0) -> None:
         """Face a direction in the room. Yaw in radians, 0 = straight out from the TV stand,
         positive = Reachy's left. Big turns rotate the body; the head does the last bit."""
@@ -123,9 +151,13 @@ class ReachyGaze:
                              BODY_YAW_LIMIT)
             head_yaw = clamp(yaw - body_yaw, HEAD_YAW_LIMIT)
         self.body_yaw = body_yaw
+        self.moved_at = None  # moving
         await self.reachy.goto(head={"pitch": clamp(pitch, HEAD_PITCH_LIMIT), "yaw": head_yaw},
                                antennas=ANTENNAS[antennas] if antennas else None,
                                body_yaw=body_yaw, duration=duration)
+        self.head_yaw, self.pitch = head_yaw, clamp(pitch, HEAD_PITCH_LIMIT)
+        # `goto` returns when the move is sent; count the move as done once it has had time.
+        self.moved_at = time.monotonic() + duration
 
     async def express(self, name: str, duration: float = 0.8) -> None:
         await self.reachy.goto(antennas=ANTENNAS[name], duration=duration)

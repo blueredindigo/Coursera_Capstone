@@ -177,6 +177,26 @@
     box(v, 0, 0, 0, 5, 2, 2, shade(c, -0.1)); box(v, 0, 5, 0, 0, 2, 2, shade(c, -0.1));
     return v;
   }
+  // Before Christmas each duck is an egg in its bed, speckled in its own colours.
+  function eggModel(look, cracked) {
+    const v = [], c = "#f6f0e2";
+    box(v, 0, 2, 0, 2, 1, 3, c); box(v, 1, 1, 1, 1, 0, 0, c);
+    box(v, 1, 1, 0, 2, 4, 4, c); box(v, 0, 2, 1, 1, 4, 4, c); set(v, 1, 1, 5, c);
+    for (const [x, y, z, k] of [[2, 0, 2, "ring"], [2, 2, 1, "shell"], [0, 2, 3, "ring"], [2, 1, 3, "shade"], [1, 2, 2, "shell"]])
+      set(v, x, y, z, look[k]);
+    if (cracked) {
+      for (let i = v.length - 1; i >= 0; i--) if (v[i][2] >= 4) v.splice(i, 1);
+      for (const [x, y] of [[2, 0], [2, 2], [0, 2], [1, 2]]) set(v, x, y, 3, "#3a3440");
+    }
+    return v;
+  }
+  function shellModel() { const v = [], c = "#f6f0e2"; box(v, 0, 1, 0, 0, 0, 0, c); set(v, 0, 0, 1, c); return v; }
+  const eggCache = {};
+  function eggSprite(i, cracked) {
+    const k = i + "|" + cracked;
+    return eggCache[k] || (eggCache[k] = renderVoxels(eggModel(LOOKS[i % LOOKS.length], cracked)));
+  }
+
   const PROPS = {};
   function prop(name, make) { return PROPS[name] || (PROPS[name] = renderVoxels(make())); }
 
@@ -313,7 +333,10 @@
       scene.ducks[name] = {i, name, gx: 2 + i * 3.5, gy: 2.5 + i * 1.5, dir: i ? 1 : 0, frame: 0, target: null,
                            emote: null, emoteT: 0, last: null, beakT: 0, blinkT: 0, idleT: 0,
                            told: false, bed, mode: "roam", peekT: 0, chaseT: 0, kickCool: 0};
-      addButton(name, "Pet " + title(name) + " on the screen", () => emote(scene.ducks[name], "heart", 14));
+      addButton(name, "Pet " + title(name) + " on the screen", () => {
+        const d = scene.ducks[name];
+        if (d.egg) d.wobbleT = 10; else emote(d, "heart", 14);
+      });
     }
     return scene.ducks[name];
   }
@@ -395,6 +418,18 @@
       const d = duckState(name, i), real = S.ducks[name];
       d.offline = !real.connected;
       d.paused = !!real.paused;
+      // An egg sits in its bed and wobbles now and then. Hatch day: it cracks, and out it comes.
+      if (real.hatched === false) {
+        d.egg = true; d.gx = d.bed.gx + 0.6; d.gy = d.bed.gy + 0.6;
+        if (d.wobbleT > 0) d.wobbleT -= 1; else if (Math.random() < 0.008) d.wobbleT = 6;
+        return;
+      }
+      if (d.egg) { d.egg = false; d.hatchT = 30; d.dir = 0; d.emote = null; d.emoteT = 0; }
+      if (d.hatchT > 0) {
+        d.hatchT -= 1;
+        if (d.hatchT === 12) emote(d, "heart", 18);
+        if (d.hatchT > 12) return;
+      }
       if (d.beakT > 0) d.beakT -= 1;
       if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
       if (d.kickCool > 0) d.kickCool -= 1;
@@ -478,7 +513,7 @@
 
   // A duck that's switched off, paused or in bed (asleep, charging, tired, quiet hours)
   // doesn't get up to chase the ball or peek behind the chair.
-  function canPlay(d) { return !d.offline && !d.paused && d.mode !== "bed"; }
+  function canPlay(d) { return !d.offline && !d.paused && !d.egg && d.mode !== "bed"; }
 
   function kickBall(d, strength) {
     const angle = [0, Math.PI / 2, Math.PI, -Math.PI / 2][d ? d.dir : (Math.random() * 4) | 0] + (Math.random() - 0.5) * 0.9;
@@ -541,6 +576,24 @@
     names.forEach((name, i) => {
       const d = scene.ducks[name], real = S.ducks[name];
       if (!d) return;
+      if (real.hatched === false || d.egg || d.hatchT > 12) {
+        if (real.hatched === false) { d.gx = d.bed.gx + 0.6; d.gy = d.bed.gy + 0.6; }
+        const cracked = d.hatchT > 12;
+        things.push({depth: d.gx + d.gy + 1, draw: () => {
+          shadow(g, d.gx + 0.4, d.gy + 0.4, 8);
+          const wob = d.wobbleT > 0 || cracked ? ((scene.t >> 1) % 2 ? 1 : -1) : 0;
+          const sp = eggSprite(i, cracked), [sx, sy] = iso(d.gx, d.gy);
+          g.drawImage(sp.canvas, Math.round(sx - sp.ax + wob), Math.round(sy - sp.ay - 1));
+          place(name, sx - 7, sy - 16, 14, 18);
+        }});
+        return;
+      }
+      if (d.hatchT > 0) {
+        things.push({depth: d.gx + d.gy + 1.2, draw: () => {
+          const shell = prop("shell", shellModel);
+          blit(g, shell, d.gx + 0.9, d.gy + 0.1); blit(g, shell, d.gx + 0.1, d.gy + 0.9);
+        }});
+      }
       things.push({depth: d.gx + d.gy + 1, draw: () => {
         const sleeping = real.asleep || night || real.tiredness === "charging";
         const pose = {
@@ -565,6 +618,7 @@
     // labels
     if (scene.labels) {
       const text = names.slice(0, 2).map((n) => {
+        if (S.ducks[n].hatched === false) return title(n).toUpperCase() + " EGG";
         const pct = S.ducks[n].battery_percent == null ? "--" : Math.round(S.ducks[n].battery_percent) + "%";
         return title(n).toUpperCase() + " " + pct;
       });

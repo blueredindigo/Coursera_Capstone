@@ -77,7 +77,7 @@ label.field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(
 .pack b{font-size:16px}.pack span{font-size:13px}
 .good{color:var(--good);font-weight:700}.tired{color:var(--warn);font-weight:700}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(244,240,230,.96);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
-nav.tabs div{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+nav.tabs div{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 nav.tabs button{min-height:48px;border:0;border-radius:14px;background:var(--sand);font-weight:700;cursor:pointer}
 nav.tabs button[aria-selected="true"]{background:var(--teal);color:#fff}
 [role="tabpanel"]{display:flex;flex-direction:column;gap:14px}
@@ -88,6 +88,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .quietbar[hidden]{display:none}
 .routines{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:14px}
 .routines li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.flat{position:relative;border-radius:16px;overflow:hidden;border:4px solid #1c1a24;background:#e9e2d2;cursor:crosshair}
+.flat canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+.flat svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:1px solid #1c1a24;display:inline-block}
+.things{margin:0;padding-left:18px;font-size:14px;color:var(--ink2)}.things li{margin:3px 0}
 </style>
 </head>
 <body>
@@ -180,6 +187,30 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
       <ul class="routines" id="routines"></ul>
     </section>
   </section>
+
+  <!-- ── Map ────────────────────────────────────────────────────────────── -->
+  <section role="tabpanel" id="panel-map" aria-labelledby="tab-map" hidden>
+    <h2 style="font-size:26px;font-weight:700">The flat</h2>
+    <p class="muted" id="map-intro" style="margin:0"></p>
+    <div class="flat" id="flat"><canvas id="flat-canvas" role="img" aria-label="A map of the flat: black where nothing has looked yet, grey where something looked a while ago, bright where Reachy or a duck is looking now"></canvas><svg id="flat-marks" aria-hidden="true"></svg></div>
+    <p style="margin:0;font-size:14px;min-height:1.4em" id="map-info" role="status" aria-live="polite">Tap the map to see what's known about a spot.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:#17151f"></i>Never seen</span>
+      <span><i class="sw" style="background:#8a8290"></i>Seen before (darker is older)</span>
+      <span><i class="sw" style="background:#e3b77c"></i>In view now</span>
+      <span><i class="sw" style="background:#3b3346"></i>Wall or furniture</span>
+    </div>
+    <p class="muted" style="margin:0" id="map-coverage"></p>
+    <section class="card">
+      <h2>Reachy has seen</h2>
+      <ul class="things" id="map-things"></ul>
+    </section>
+    <section class="card" id="map-sim" hidden>
+      <h2>Simulation</h2>
+      <p class="muted" style="margin:0">Switch a duck on or off, as if it were Christmas morning or bedtime.</p>
+      <div class="chips" id="sim-power"></div>
+    </section>
+  </section>
 </div>
 
 <nav class="tabs" aria-label="Sections">
@@ -187,6 +218,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
     <button role="tab" id="tab-care" aria-controls="panel-care" aria-selected="true">Care</button>
     <button role="tab" id="tab-saw" aria-controls="panel-saw" aria-selected="false">Saw &amp; find</button>
     <button role="tab" id="tab-night" aria-controls="panel-night" aria-selected="false">Night</button>
+    <button role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false">Map</button>
   </div>
 </nav>
 
@@ -218,9 +250,11 @@ const BANDS = {
 const tiredBand = (b) => b === "low" || b === "very_low";
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
-for (const name of ["care", "saw", "night"]) {
+const TABS = ["care", "saw", "night", "map"];
+for (const name of TABS) {
   $("tab-" + name).addEventListener("click", () => {
-    for (const other of ["care", "saw", "night"]) {
+    if (name === "map") refreshMap();
+    for (const other of TABS) {
       $("tab-" + other).setAttribute("aria-selected", String(other === name));
       $("panel-" + other).hidden = other !== name;
     }
@@ -254,12 +288,14 @@ function renderCare() {
   put($("duck-tabs"), names.map((n) => {
     const x = S.ducks[n], b = BANDS[x.tiredness] || BANDS.unknown;
     const pct = x.battery_percent == null ? "–" : Math.round(x.battery_percent) + "%";
-    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${pct} · ${esc(x.connected ? b.short : "off")}</small></button>`;
+    const state = x.hatched === false ? "egg" : x.connected ? b.short : "off";
+    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${x.hatched === false ? "" : pct + " · "}${esc(state)}</small></button>`;
   }).join(""));
 
   const pct = d.battery_percent == null ? "–" : Math.round(d.battery_percent);
   const doing = d.paused ? "paused by you" : d.asleep ? "asleep" : (d.behaviour || "deciding what to do").replace(/_/g, " ");
-  const block = !d.connected ? `${title(picked)} is switched off or out of reach. It picks up where it left off when it's back on.`
+  const block = d.hatched === false ? `${title(picked)} is still an egg in its bed. It hatches the first time it's switched on, and Reachy tells it everything it has seen in the lounge.`
+    : !d.connected ? `${title(picked)} is switched off or out of reach. It picks up where it left off when it's back on.`
     : d.fallen ? "It has fallen over. It gets itself up; the Nest waits."
     : d.safety && !d.paused ? "Won't walk right now: " + d.safety + "." : "";
   put($("duck-card"), `
@@ -406,6 +442,98 @@ $("log").addEventListener("click", async () => {
   catch (err) { $("logged").textContent = "Couldn't log it: " + err.message; }
   refresh();
 });
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+let M = null;            // the latest /api/map
+const DUCK_COLOURS = ["#3fa7c4", "#9a84cc", "#6b7075", "#cfc8ba"];
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function fogRGB([r, g, b], ageMin) {
+  const l = r * 0.3 + g * 0.59 + b * 0.11, m = 0.62;
+  const k = 0.74 - 0.32 * Math.min(1, ageMin / (3 * 1440));
+  return [(r * (1 - m) + l * m) * k + 4, (g * (1 - m) + l * m) * k + 6, (b * (1 - m) + l * m) * k + 18];
+}
+function ago(min) {
+  if (min < 1) return "just now";
+  if (min < 60) return Math.round(min) + " min ago";
+  if (min < 1440) return Math.round(min / 60) + " h ago";
+  const d = Math.round(min / 1440); return d + (d === 1 ? " day ago" : " days ago");
+}
+async function refreshMap() {
+  try { M = await (await fetch("/api/map", {cache: "no-store"})).json(); drawMap(); } catch (e) { /* the status poll shows the Nest is away */ }
+}
+function drawMap() {
+  if (!M) return;
+  const {w, h} = M, cells = b64(M.cells), outside = b64(M.outside);
+  M._cells = cells;
+  M._who = b64(M.who);
+  const cv = $("flat-canvas");
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const g = cv.getContext("2d"), img = g.createImageData(w, h), px = img.data;
+  const floor = [201, 154, 106];
+  for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
+    const c = cells[i * w + j], o = ((h - 1 - i) * w + j) * 4;   // row 0 is the room's y0: draw it at the bottom
+    let rgb;
+    if (outside[i * w + j]) rgb = [233, 226, 210];
+    else if (c === 0) rgb = ((i * 7 + j * 13) % 37 === 0) ? [36, 32, 46] : [23, 21, 31];
+    else if (c === 253) rgb = [59, 51, 70];
+    else if (c === 255) rgb = [227, 183, 124];
+    else rgb = fogRGB(floor, (c - 1) * M.bucket_min);
+    px[o] = rgb[0]; px[o + 1] = rgb[1]; px[o + 2] = rgb[2]; px[o + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  // Marks on top, in metres: y up, like the room frame.
+  const X = (x) => (x - M.x0), Y = (y) => (M.h * M.cell - (y - M.y0));
+  const W = w * M.cell, H = h * M.cell, r = Math.max(W, H) / 60;
+  const svg = $("flat-marks");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  let out = "";
+  if (M.reachy.view && M.reachy.watching) out += `<polygon points="${M.reachy.view.map(([x, y]) => X(x) + "," + Y(y)).join(" ")}" fill="none" stroke="#fff3c4" stroke-width="${r / 3}" stroke-dasharray="${r} ${r / 2}" opacity=".8"/>`;
+  for (const [name, [x, y]] of Object.entries(M.landmarks)) {
+    out += `<circle cx="${X(x)}" cy="${Y(y)}" r="${r * 0.6}" fill="#fff" stroke="#1c1a24" stroke-width="${r / 4}"/>`;
+    out += `<text x="${X(x) + r}" y="${Y(y) + r * 0.5}" font-size="${r * 1.8}" fill="#fff" stroke="#1c1a24" stroke-width="${r / 2.5}" paint-order="stroke" font-family="Atkinson Hyperlegible, sans-serif">${esc(name)}</text>`;
+  }
+  const [rx, ry] = M.reachy.xy;
+  out += `<rect x="${X(rx) - r}" y="${Y(ry) - r}" width="${2 * r}" height="${2 * r}" rx="${r / 3}" fill="#f3f2ec" stroke="#1c1a24" stroke-width="${r / 3}"/>`;
+  Object.entries(M.ducks).forEach(([name, d], i) => {
+    const col = DUCK_COLOURS[i % DUCK_COLOURS.length];
+    if (!d.hatched && d.bed) out += `<ellipse cx="${X(d.bed[0])}" cy="${Y(d.bed[1])}" rx="${r * 0.9}" ry="${r * 1.2}" fill="#f6f0e2" stroke="${col}" stroke-width="${r / 2.5}"/>`;
+    else if (d.xy) out += `<circle cx="${X(d.xy[0])}" cy="${Y(d.xy[1])}" r="${r * 1.2}" fill="${col}" stroke="#1c1a24" stroke-width="${r / 3}"/>`;
+  });
+  svg.innerHTML = out;
+  // words
+  $("map-intro").textContent = !M.calibrated
+    ? "The map starts once Reachy's view of the floor is calibrated (SETUP.md, step 4). Until then, only the walkthrough and the ducks can fill it in."
+    : M.walkthrough ? "Your walkthrough drew the flat. Reachy and the ducks keep it up to date: anything they haven't looked at lately fades."
+    : "Reachy's view of the lounge fills this in. The rest of the flat stays black until the walkthrough or the ducks get there.";
+  $("map-coverage").textContent = `Seen by Reachy or the ducks: ${M.coverage.seen}% of the floor. In the last 12 hours: ${M.coverage.fresh}%.`;
+  put($("map-things"), (M.things || []).map((t) => `<li><b>${esc(t.obj)}</b> ${esc(t.where)} <span class="muted">· ${ago((Date.now() / 1000 - t.at) / 60)}</span></li>`).join("")
+    || `<li class="muted">Nothing yet. Reachy's diary needs the vision model and its camera switched on (SETUP.md).</li>`);
+  $("map-sim").hidden = !(S && S.sim);
+  if (S && S.sim) put($("sim-power"), Object.entries(S.ducks).map(([n, d]) =>
+    `<button class="chip" data-power="${esc(n)}" aria-pressed="${d.connected}">${esc(title(n))}: ${d.connected ? "switch off" : d.hatched === false ? "switch on (hatch!)" : "switch on"}</button>`).join(""));
+}
+$("flat").addEventListener("click", (e) => {
+  if (!M || !M._cells) return;
+  const rect = $("flat-canvas").getBoundingClientRect();
+  const j = Math.floor((e.clientX - rect.left) / rect.width * M.w);
+  const i = M.h - 1 - Math.floor((e.clientY - rect.top) / rect.height * M.h);
+  if (i < 0 || j < 0 || i >= M.h || j >= M.w) return;
+  const c = M._cells[i * M.w + j], who = M.legend[M._who[i * M.w + j]] || "";
+  const x = (M.x0 + (j + 0.5) * M.cell).toFixed(1), y = (M.y0 + (i + 0.5) * M.cell).toFixed(1);
+  const nearest = Object.entries(M.landmarks).map(([n, [lx, ly]]) => [Math.hypot(lx - x, ly - y), n]).sort((a, b) => a[0] - b[0])[0];
+  const where = nearest && nearest[0] < 1.2 ? "Near the " + nearest[1] : `At ${x}, ${y} m`;
+  const what = c === 0 ? "never seen" : c === 253 ? "a wall or furniture, from your walkthrough"
+    : c === 255 ? "in view right now" + (who ? " (" + title(who) + ")" : "")
+    : `last seen ${ago((c - 1) * M.bucket_min)}${who ? " by " + (who === "reachy" ? "Reachy" : who === "your walkthrough" ? "your walkthrough" : title(who)) : ""}`;
+  $("map-info").textContent = `${where}: ${what}.`;
+});
+$("sim-power").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-power]"); if (!b) return;
+  try { await post(`/api/sim/power/${encodeURIComponent(b.dataset.power)}`); } catch (err) { $("map-info").textContent = err.message; }
+  refresh();
+});
+setInterval(() => { if (!$("panel-map").hidden) refreshMap(); }, 3000);
 
 // ── polling ──────────────────────────────────────────────────────────────────
 function renderAll() {

@@ -7,6 +7,7 @@ an 8-bit pond where Ah-Ah and Tee-Tee walk about and show their moods, then thre
 * **Care:** each duck's energy, mood and what it's doing, and six things to ask it;
 * **Saw & find:** record what a duck saw as a sentence, and ask where something is;
 * **Night:** bedtime and good morning, and pit stops with the battery diary.
+* **Map:** the floor map with fog of war, Reachy's view, and what Reachy has seen.
 
 Everything the page needs is served from here, fonts included: it works with no internet.
 """
@@ -66,6 +67,20 @@ def build(nest: Nest) -> FastAPI:
     @app.get("/api/status")
     async def status() -> dict[str, Any]:
         return nest.status()
+
+    @app.get("/api/map")
+    async def floor_map() -> dict[str, Any]:
+        return nest.map_state()
+
+    @app.post("/api/sim/power/{name}")
+    async def sim_power(name: str) -> dict[str, bool]:
+        """Simulation only: flip a duck's power switch (to try hatch day, or a duck off)."""
+        if not nest.sim:
+            raise HTTPException(404, "only in simulation")
+        mind(name)
+        duck = nest.world.ducks[name]
+        nest.world.power(name, not duck.switched_on)
+        return {"on": duck.switched_on}
 
     @app.post("/api/duck/{name}/call")
     async def call(name: str) -> dict[str, str]:
