@@ -1,0 +1,33 @@
+[project]
+name = "nest"
+version = "0.1.0"
+description = "The Nest: the always-on mind for two Microducks and a Reachy Mini, on a Jetson."
+requires-python = ">=3.10"
+dependencies = [
+    "aiortc>=1.9",        # the duck's LAN WebRTC control channel
+    "websockets>=12",     # its signalling server on :8443
+    "httpx>=0.27",        # Reachy's REST API, the duck's /frame, Ollama
+    "fastapi>=0.110",     # the Pond
+    "uvicorn>=0.29",
+    "numpy>=1.24",
+    "tomli>=2; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+# Reachy's camera + the duck detector on it (Phase 2). reachy-mini pulls GStreamer bindings;
+# follow Pollen's installation guide for the system packages first.
+room-eye = ["reachy-mini", "onnxruntime", "opencv-python-headless"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+nest = "nest.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["nest*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

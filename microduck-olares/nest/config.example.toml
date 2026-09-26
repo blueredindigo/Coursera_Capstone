@@ -1,0 +1,81 @@
+# The Nest's configuration. Copy to config.toml and edit.
+# Everything here is on your home network: no cloud endpoints anywhere.
+
+[nest]
+data_dir = "/var/lib/nest"     # memories, Duckdexes, the battery diary
+web_port = 8090                # the Pond: http://<jetson>:8090
+tick_hz = 1.0
+
+# ── the ducks ────────────────────────────────────────────────────────────────
+# Use fixed IPs (reserve them in your router): mDNS names like ah-ah.local work on the host but
+# not always inside containers. Name each duck first: `sudo robotctl system set-name ah-ah`.
+[[duck]]
+name = "ah-ah"
+host = "192.168.1.41"
+transport = "webrtc"           # the robot's own LAN control channel (:8443)
+keep_video = true              # receive the duck's camera stream (costs some CPU)
+bed = "ah-ah's bed"            # a landmark below
+walk_speed = 0.15              # m/s, its best: tiredness never lowers this
+
+[[duck]]
+name = "tee-tee"
+host = "192.168.1.42"
+bed = "tee-tee's bed"
+
+# For development over ssh instead of WebRTC:
+#   ssh -N -L /tmp/tee-tee.sock:/run/robotd.sock microduck@192.168.1.42
+# then: transport = "unix", socket = "/tmp/tee-tee.sock"
+
+# Optional: pin a trait if the dice gave you a duck you did not expect (0.2 … 0.8).
+[personality.ah-ah]
+# boldness = 0.8
+
+[personality.tee-tee]
+# curiosity = 0.8
+
+# ── Reachy Mini Lite, plugged into this Jetson by USB ────────────────────────
+[reachy]
+enabled = true
+url = "http://localhost:8000"  # its daemon, running on this Jetson
+camera = false                 # Phase 2: true once the floor is calibrated
+detector_model = "/var/lib/nest/models/duck_detect.onnx"   # scripts/get_detector.sh
+detector_threshold = 0.6       # float model: a probability. Tune on your own room.
+position = [2.5, 0.0]          # where Reachy sits in your room frame, metres
+facing = 1.5708                # room heading its body_yaw = 0 points along, radians
+homography = []               # filled in by the floor calibration
+
+# ── the tiredness gauge: battery percent band edges ──────────────────────────
+[tiredness]
+high = 70
+low = 35
+very_low = 15
+hysteresis = 3
+
+# ── the Nest's safety gate (the duck's own safety always wins anyway) ────────
+[safety]
+obstacle_m = 0.25
+hot_servo_c = 65
+require_tof = true
+
+[earshot]
+max_m = 1.5                    # ducks this close in Reachy's view can "hear" each other
+
+# ── landmarks: big things that don't move, in the room frame (metres) ────────
+[landmarks]
+"sofa" = [1.0, 3.2]
+"green chair" = [3.4, 2.6]
+"tv stand" = [2.5, 0.0]
+"ah-ah's bed" = [2.2, 0.4]
+"tee-tee's bed" = [2.8, 0.4]
+
+[vocabulary]
+# Extra words both ducks share, appended to the built-in list. Append only; never reorder.
+words = []
+
+# ── Phase 5: what the ducks see, via a local vision model under Ollama ───────
+[captioner]
+enabled = false
+url = "http://localhost:11434"
+model = "qwen2.5vl:3b"
+every_s = 20
+min_confidence = 0.5

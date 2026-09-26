@@ -10,6 +10,13 @@ other about them.
 > of the room, the Jetson is the always-on mind, and Olares does the heavy thinking by day.
 > **Everything stays on the local network.**
 
+> **Status (26 Sep 2026):** the software for phases 0–3 is built, with groundwork for phases
+> 4–6. It lives in [`nest/`](nest/): the Nest runs on the Jetson, talks to both ducks over
+> their own LAN WebRTC control channel and to Reachy Lite over its local API, and has the needs,
+> tiredness gauge, safety gate, landmark memory, Duckdex and duck bus. It is tested in a
+> simulated living room and against a stand-in for the duck's WebRTC server, **not yet on the
+> real robots**. Start with [`nest/SETUP.md`](nest/SETUP.md).
+
 Ground rules:
 
 1. **The robot's own software has the final say on movement.** Anything off-board proposes
