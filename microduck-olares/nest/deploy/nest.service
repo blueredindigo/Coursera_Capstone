@@ -1,0 +1,21 @@
+# systemd unit for running the Nest on the Jetson host (recommended once Reachy's camera is on).
+#
+#   sudo cp deploy/nest.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now nest
+#
+# Assumes: a venv at /opt/nest/venv with `pip install /path/to/nest[room-eye]`,
+# config at /etc/nest/config.toml, and Reachy's daemon running as reachy-mini-daemon.service.
+[Unit]
+Description=The Nest: Ah-Ah, Tee-Tee and Reachy
+After=network-online.target reachy-mini-daemon.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/nest/venv/bin/python -m nest --config /etc/nest/config.toml
+Restart=always
+RestartSec=5
+User=nest
+StateDirectory=nest
+
+[Install]
+WantedBy=multi-user.target
