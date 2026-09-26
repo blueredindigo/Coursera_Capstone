@@ -889,8 +889,8 @@ snap a duck's position back to exact whenever it sees one:
 | Lounge: one at the Nest, one across the room | 2 |
 | Kitchen | 1 |
 | Hallway | 1 |
-| Each bedroom | 2 |
-| Each bathroom, inside | 2 |
+| Bedrooms, one each | 2 |
+| Bathrooms, one each, inside | 2 |
 | Balcony door | 1 |
 
 That's **9 tags**. The dev kit has 10 NFC tags, so once Pollen exposes NFC, one sticker under
