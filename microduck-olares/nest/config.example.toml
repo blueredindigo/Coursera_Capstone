@@ -43,6 +43,7 @@ detector_threshold = 0.6       # float model: a probability. Tune on your own ro
 position = [2.5, 0.0]          # where Reachy sits in your room frame, metres
 facing = 1.5708                # room heading its body_yaw = 0 points along, radians
 homography = []               # filled in by the floor calibration
+view_range = 6.0               # m: how far out the floor map trusts Reachy's view
 
 # ── quiet hours: the toddler's bedtime ───────────────────────────────────────
 # No motion and no sound from `start` to `end` (the Jetson's local time), even if a robot is
@@ -79,6 +80,13 @@ max_m = 1.5                    # ducks this close in Reachy's view can "hear" ea
 "ah-ah's bed" = [2.2, 0.4]
 "tee-tee's bed" = [2.8, 0.4]
 
+# ── the floor map: fog of war over the flat ──────────────────────────────────
+# Leave bounds out: the walkthrough's floor plan (data_dir/floorplan.npz) sets them, and until
+# then the landmarks do.
+[map]
+# bounds = [-1.0, -1.0, 11.0, 9.0]   # x0, y0, x1, y1 in metres, room frame
+cell = 0.05
+
 [vocabulary]
 # Extra words both ducks share, appended to the built-in list. Append only; never reorder.
 words = []
@@ -90,3 +98,4 @@ url = "http://localhost:11434"
 model = "qwen2.5vl:3b"
 every_s = 20
 min_confidence = 0.5
+reachy_every_s = 600           # Reachy's diary: what's in the lounge, every 10 minutes by day

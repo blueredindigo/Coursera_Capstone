@@ -1,6 +1,7 @@
 """Floor calibration for Reachy's view: pixels on the floor → metres in your room frame.
 
-1. Snapshot what Reachy sees (run on the Jetson, with Reachy's daemon up):
+1. Snapshot what Reachy sees (run on the Jetson, with Reachy's daemon up). This first puts
+   Reachy in its watch pose, the pose the Nest returns it to; the calibration only holds there:
 
        python -m nest.calibrate snapshot reachy_view.png
 
@@ -24,11 +25,31 @@ import sys
 from .world.room import FloorHomography
 
 
+def watch_pose(url: str = "http://localhost:8000") -> None:
+    """Put Reachy in the watch pose, the one the Nest returns to, so the calibration holds."""
+    import asyncio
+    import time
+
+    from .reachy import ReachyClient, ReachyGaze
+
+    async def go() -> None:
+        client = ReachyClient(url)
+        try:
+            await client.wake_up()
+            await ReachyGaze(client).watch()
+        finally:
+            await client.close()
+
+    asyncio.run(go())
+    time.sleep(2.5)  # let the move finish and the image settle
+
+
 def snapshot(path: str) -> None:
     import cv2
 
     from .reachy import ReachyCamera
 
+    watch_pose()
     camera = ReachyCamera()
     try:
         for _ in range(30):

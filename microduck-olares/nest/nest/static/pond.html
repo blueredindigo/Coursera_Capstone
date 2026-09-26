@@ -25,8 +25,10 @@ h1{margin:0;font-family:var(--serif);font-size:28px;font-weight:700}
 h2{margin:0;font-family:var(--serif);font-size:20px;font-weight:600}
 .pill{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;background:var(--sand);font-size:13px;color:var(--ink2)}
 .sim{background:#1e2421;color:#f4f0e6}
-.pond{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1f3320;background:#cfe0b8;aspect-ratio:350/142}
-.pond svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.pond{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1c1a24;background:#e9e2d2;aspect-ratio:192/120}
+.pond canvas{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+.pond-labels{position:absolute;left:8px;right:8px;top:6px;display:flex;justify-content:space-between;font:8px/12px "Press Start 2P",monospace;color:#1f3320;pointer-events:none}
+.pond-labels span{background:rgba(255,255,255,.75);padding:2px 4px;border-radius:4px}
 .pet{position:absolute;padding:0;border:0;background:transparent;cursor:pointer;border-radius:8px}
 .pet:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
 .seg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:5px;border-radius:16px;background:var(--sand)}
@@ -75,7 +77,7 @@ label.field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(
 .pack b{font-size:16px}.pack span{font-size:13px}
 .good{color:var(--good);font-weight:700}.tired{color:var(--warn);font-weight:700}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;background:rgba(244,240,230,.96);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
-nav.tabs div{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+nav.tabs div{max-width:480px;margin:0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
 nav.tabs button{min-height:48px;border:0;border-radius:14px;background:var(--sand);font-weight:700;cursor:pointer}
 nav.tabs button[aria-selected="true"]{background:var(--teal);color:#fff}
 [role="tabpanel"]{display:flex;flex-direction:column;gap:14px}
@@ -86,6 +88,13 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .quietbar[hidden]{display:none}
 .routines{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:14px}
 .routines li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.flat{position:relative;border-radius:16px;overflow:hidden;border:4px solid #1c1a24;background:#e9e2d2;cursor:crosshair}
+.flat canvas{display:block;width:100%;height:auto;image-rendering:pixelated;image-rendering:crisp-edges}
+.flat svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:1px solid #1c1a24;display:inline-block}
+.things{margin:0;padding-left:18px;font-size:14px;color:var(--ink2)}.things li{margin:3px 0}
 </style>
 </head>
 <body>
@@ -99,7 +108,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
   </header>
 
   <div class="pond" id="pond">
-    <svg id="scene" viewBox="0 0 350 142" shape-rendering="crispEdges" role="img" aria-label="The pond: the two ducks walking about"></svg>
   </div>
   <p class="offline" id="offline" hidden>The Nest isn't answering. Is the Jetson on?</p>
   <p class="quietbar" id="quiet" role="status" hidden>
@@ -179,6 +187,30 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
       <ul class="routines" id="routines"></ul>
     </section>
   </section>
+
+  <!-- ── Map ────────────────────────────────────────────────────────────── -->
+  <section role="tabpanel" id="panel-map" aria-labelledby="tab-map" hidden>
+    <h2 style="font-size:26px;font-weight:700">The flat</h2>
+    <p class="muted" id="map-intro" style="margin:0"></p>
+    <div class="flat" id="flat"><canvas id="flat-canvas" role="img" aria-label="A map of the flat: black where nothing has looked yet, grey where something looked a while ago, bright where Reachy or a duck is looking now"></canvas><svg id="flat-marks" aria-hidden="true"></svg></div>
+    <p style="margin:0;font-size:14px;min-height:1.4em" id="map-info" role="status" aria-live="polite">Tap the map to see what's known about a spot.</p>
+    <div class="legend">
+      <span><i class="sw" style="background:#17151f"></i>Never seen</span>
+      <span><i class="sw" style="background:#8a8290"></i>Seen before (darker is older)</span>
+      <span><i class="sw" style="background:#e3b77c"></i>In view now</span>
+      <span><i class="sw" style="background:#3b3346"></i>Wall or furniture</span>
+    </div>
+    <p class="muted" style="margin:0" id="map-coverage"></p>
+    <section class="card">
+      <h2>Reachy has seen</h2>
+      <ul class="things" id="map-things"></ul>
+    </section>
+    <section class="card" id="map-sim" hidden>
+      <h2>Simulation</h2>
+      <p class="muted" style="margin:0">Switch a duck on or off, as if it were Christmas morning or bedtime.</p>
+      <div class="chips" id="sim-power"></div>
+    </section>
+  </section>
 </div>
 
 <nav class="tabs" aria-label="Sections">
@@ -186,9 +218,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
     <button role="tab" id="tab-care" aria-controls="panel-care" aria-selected="true">Care</button>
     <button role="tab" id="tab-saw" aria-controls="panel-saw" aria-selected="false">Saw &amp; find</button>
     <button role="tab" id="tab-night" aria-controls="panel-night" aria-selected="false">Night</button>
+    <button role="tab" id="tab-map" aria-controls="panel-map" aria-selected="false">Map</button>
   </div>
 </nav>
 
+<script src="/static/pond-scene.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -216,9 +250,11 @@ const BANDS = {
 const tiredBand = (b) => b === "low" || b === "very_low";
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
-for (const name of ["care", "saw", "night"]) {
+const TABS = ["care", "saw", "night", "map"];
+for (const name of TABS) {
   $("tab-" + name).addEventListener("click", () => {
-    for (const other of ["care", "saw", "night"]) {
+    if (name === "map") refreshMap();
+    for (const other of TABS) {
       $("tab-" + other).setAttribute("aria-selected", String(other === name));
       $("panel-" + other).hidden = other !== name;
     }
@@ -252,12 +288,14 @@ function renderCare() {
   put($("duck-tabs"), names.map((n) => {
     const x = S.ducks[n], b = BANDS[x.tiredness] || BANDS.unknown;
     const pct = x.battery_percent == null ? "–" : Math.round(x.battery_percent) + "%";
-    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${pct} · ${esc(x.connected ? b.short : "off")}</small></button>`;
+    const state = x.hatched === false ? "egg" : x.connected ? b.short : "off";
+    return `<button role="tab" data-duck="${esc(n)}" aria-selected="${n === picked}"><b>${esc(title(n))}</b><small>${x.hatched === false ? "" : pct + " · "}${esc(state)}</small></button>`;
   }).join(""));
 
   const pct = d.battery_percent == null ? "–" : Math.round(d.battery_percent);
   const doing = d.paused ? "paused by you" : d.asleep ? "asleep" : (d.behaviour || "deciding what to do").replace(/_/g, " ");
-  const block = !d.connected ? `${title(picked)} is switched off or out of reach. It picks up where it left off when it's back on.`
+  const block = d.hatched === false ? `${title(picked)} is still an egg in its bed. It hatches the first time it's switched on, and Reachy tells it everything it has seen in the lounge.`
+    : !d.connected ? `${title(picked)} is switched off or out of reach. It picks up where it left off when it's back on.`
     : d.fallen ? "It has fallen over. It gets itself up; the Nest waits."
     : d.safety && !d.paused ? "Won't walk right now: " + d.safety + "." : "";
   put($("duck-card"), `
@@ -405,184 +443,97 @@ $("log").addEventListener("click", async () => {
   refresh();
 });
 
-// ── the 8-bit pond ───────────────────────────────────────────────────────────
-// Two of the real Microduck colourways; a third and fourth duck would get the others.
-const LOOKS = [
-  {shell: "#8fd3e3", shade: "#62aec2", ring: "#f5a31a", beak: "#ee6a2a", foot: "#ee6a2a", sole: "#f2c14e"},
-  {shell: "#c3b1e6", shade: "#9a84cc", ring: "#6fc3e6", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
-  {shell: "#5f6366", shade: "#44484b", ring: "#8a68c8", beak: "#f2c94c", foot: "#f2c94c", sole: "#8a68c8"},
-  {shell: "#efebe3", shade: "#cfc8ba", ring: "#f5a31a", beak: "#ee6a2a", foot: "#f5a31a", sole: "#ee6a2a"},
-];
-const LEGS = [
-  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM3 16h2v1h-2zM9 16h3v1h-3zM2 17h3v1h-3zM10 17h2v1h-2z", joint: "M5 15h4v1h-4zM3 18h1v1h-1zM11 18h1v1h-1z", feet: "M2 19h3v1h-3zM10 19h3v1h-3z", soles: "M2 20h4v1h-4zM10 20h4v1h-4z"},
-  {thigh: "M3 15h2v1h-2zM9 15h2v1h-2zM4 16h2v1h-2zM8 16h2v1h-2zM4 17h2v1h-2zM8 17h2v1h-2z", joint: "M5 15h4v1h-4zM5 18h1v1h-1zM8 18h1v1h-1zM8 19h1v1h-1z", feet: "M10 18h3v1h-3zM4 19h3v1h-3z", soles: "M10 19h3v1h-3zM4 20h4v1h-4z"},
-];
-const ICONS = {
-  heart: {w: 7, h: 6, fill: "#c8324a", d: "M1 0h2v1h-2zM4 0h2v1h-2zM0 1h7v1h-7zM0 2h7v1h-7zM1 3h5v1h-5zM2 4h3v1h-3zM3 5h1v1h-1z"},
-  zzz: {w: 7, h: 7, fill: "#2d4f7c", d: "M0 0h4v1h-4zM2 1h1v1h-1zM1 2h1v1h-1zM0 3h7v1h-7zM4 4h1v1h-1zM3 5h1v1h-1zM2 6h4v1h-4z"},
-  bang: {w: 5, h: 6, fill: "#1e2421", d: "M2 0h1v1h-1zM2 1h1v1h-1zM2 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
-  ask: {w: 5, h: 6, fill: "#1e2421", d: "M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM3 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
-  note: {w: 6, h: 6, fill: "#1e2421", d: "M2 0h4v1h-4zM2 1h1v1h-1zM5 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM1 3h2v1h-2zM4 3h2v1h-2zM0 4h3v1h-3zM4 4h2v1h-2zM0 5h2v1h-2z"},
-};
-const MOODS = {high: ["note", "bang", "ask", "note", "heart"], medium: ["note", "ask", "bang"],
-  low: ["zzz", "ask", "note"], very_low: ["zzz", "zzz", "ask"], charging: ["zzz"], unknown: ["ask"]};
-const REST = {high: 0.008, medium: 0.012, low: 0.03, very_low: 0.06, charging: 1, unknown: 0.02};
-
-function background() {
-  let tufts = "";
-  for (let x = 3; x < 175; x += 11) tufts += `M${x} 61h1v1h-1zM${x - 1} 61h3v1h-3z`;
-  for (let x = 8; x < 175; x += 17) tufts += `M${x} 60h1v2h-1zM${x + 2} 61h1v1h-1z`;
-  const cloud = "M4 0h4v1h-4zM2 1h8v1h-8zM12 1h3v1h-3zM1 2h15v1h-15zM2 3h12v1h-12z";
-  return `<g transform="scale(2)">
-    <path fill="#cfe0b8" d="M0 0h175v71h-175z"/><path fill="#e3eed4" d="M0 0h175v30h-175z"/>
-    <path fill="#b7cf9c" d="M0 44h14v1h-14zM0 43h8v1h-8zM30 42h26v3h-26zM36 41h14v1h-14zM120 43h30v2h-30zM126 42h16v1h-16z"/>
-    <path fill="#f2c14e" transform="translate(84 6)" d="M2 0h1v1h-1zM5 0h1v1h-1zM3 1h2v1h-2zM1 2h6v1h-6zM0 3h8v1h-8zM1 4h6v1h-6zM3 5h2v1h-2zM2 6h1v1h-1zM5 6h1v1h-1z"/>
-    <path id="cloudA" fill="#ffffff" d="${cloud}"/><path id="cloudB" fill="#f5f9ef" d="${cloud}"/>
-    <path fill="#9fbd84" d="M0 63h175v8h-175z"/><path fill="#3f6b2f" d="M0 62h175v1h-175z"/>
-    <path fill="#5f8a45" d="${tufts}"/>
-    <path fill="#86a86a" d="M3 66h2v1h-2zM17 68h1v1h-1zM31 65h2v1h-2zM48 67h1v1h-1zM62 69h2v1h-2zM77 66h1v1h-1zM93 68h2v1h-2zM104 65h1v1h-1z"/>
-    <path fill="#e27d9a" d="M20 60h1v1h-1zM19 61h3v1h-3zM70 60h1v1h-1zM69 61h3v1h-3z"/>
-    <path fill="#f7f3ea" d="M44 61h1v1h-1zM43 60h1v1h-1zM45 60h1v1h-1z"/>
-    <g transform="translate(113 51)">
-      <path fill="#7a5a3a" d="M51 0h2v1h-2zM50 1h4v1h-4zM6 2h1v1h-1zM50 2h4v1h-4zM5 3h3v1h-3zM51 3h2v1h-2zM5 4h3v1h-3z"/>
-      <path fill="#4f7f39" d="M49 3h1v1h-1zM49 4h1v1h-1zM52 4h1v1h-1zM6 5h1v1h-1zM50 5h1v1h-1zM52 5h1v1h-1zM6 6h1v1h-1zM50 6h1v1h-1zM52 6h1v1h-1zM6 7h1v1h-1zM50 7h1v1h-1zM52 7h1v1h-1zM4 8h1v1h-1zM6 8h1v1h-1zM50 8h1v1h-1zM52 8h1v1h-1zM5 9h2v1h-2zM49 9h3v1h-3z"/>
-      <path fill="#2f5226" d="M11 6h33v1h-33zM9 7h2v1h-2zM44 7h2v1h-2zM8 8h1v1h-1zM46 8h1v1h-1zM7 9h1v1h-1zM47 9h1v1h-1zM6 10h1v1h-1zM48 10h1v1h-1zM5 11h1v1h-1zM49 11h1v1h-1zM5 12h1v1h-1zM49 12h1v1h-1zM6 13h1v1h-1zM49 13h1v1h-1zM7 14h2v1h-2zM47 14h2v1h-2zM9 15h6v1h-6zM43 15h4v1h-4zM15 16h28v1h-28z"/>
-      <path fill="#4f86ad" d="M11 7h33v1h-33zM9 8h3v1h-3zM15 8h8v1h-8zM27 8h13v1h-13zM43 8h3v1h-3zM8 9h10v1h-10zM20 9h3v1h-3zM28 9h19v1h-19zM7 10h4v1h-4zM14 10h10v1h-10zM28 10h7v1h-7zM38 10h10v1h-10zM6 11h37v1h-37zM45 11h4v1h-4zM6 12h3v1h-3zM12 12h15v1h-15zM30 12h12v1h-12zM46 12h3v1h-3zM7 13h30v1h-30zM39 13h4v1h-4zM45 13h4v1h-4zM9 14h6v1h-6zM18 14h29v1h-29zM15 15h28v1h-28z"/>
-      <path fill="#7fb2d4" d="M12 8h3v1h-3zM40 8h3v1h-3zM11 10h3v1h-3zM27 12h3v1h-3zM15 14h3v1h-3z"/>
-      <path id="ripple" fill="#7fb2d4" d="M18 9h2v1h-2zM35 10h3v1h-3zM9 12h3v1h-3zM37 13h2v1h-2z"/>
-      <path fill="#5c9a3e" d="M23 8h4v1h-4zM23 9h1v1h-1zM25 9h3v1h-3zM24 10h4v1h-4zM43 11h2v1h-2zM42 12h4v1h-4zM43 13h2v1h-2z"/>
-      <path fill="#e27d9a" d="M24 9h1v1h-1z"/>
-      <path fill="#8b8f86" d="M54 8h2v1h-2zM52 9h1v1h-1zM55 9h2v1h-2zM50 10h2v1h-2zM54 10h4v1h-4zM51 11h7v1h-7z"/>
-      <path fill="#b9bdb2" d="M53 9h2v1h-2zM52 10h2v1h-2z"/>
-    </g>
-  </g>
-  <g id="labels" font-family="'Press Start 2P',monospace" font-size="8" fill="#1f3320"></g>
-  <g id="ducks"></g>`;
+// ── Map ──────────────────────────────────────────────────────────────────────
+let M = null;            // the latest /api/map
+const DUCK_COLOURS = ["#3fa7c4", "#9a84cc", "#6b7075", "#cfc8ba"];
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function fogRGB([r, g, b], ageMin) {
+  const l = r * 0.3 + g * 0.59 + b * 0.11, m = 0.62;
+  const k = 0.74 - 0.32 * Math.min(1, ageMin / (3 * 1440));
+  return [(r * (1 - m) + l * m) * k + 4, (g * (1 - m) + l * m) * k + 6, (b * (1 - m) + l * m) * k + 18];
 }
-
-function sprite(look, pose) {
-  const leg = LEGS[pose.frame];
-  const eye = pose.closed ? "M6 4h4v1h-4z" : pose.happy ? "M6 4h1v1h-1zM7 3h2v1h-2zM9 4h1v1h-1z"
-    : "M7 3h2v1h-2zM6 4h1v1h-1zM8 4h2v1h-2zM7 5h2v1h-2z";
-  return `<path fill="${look.shell}" d="M5 0h6v1h-6zM3 1h10v1h-10zM2 2h2v1h-2zM11 2h3v1h-3zM2 3h1v1h-1zM13 3h1v1h-1zM2 4h1v1h-1zM12 4h2v1h-2zM2 5h2v1h-2zM12 5h2v1h-2zM4 11h7v1h-7zM3 12h9v1h-9zM3 13h7v1h-7z"/>
-    <path fill="${look.shade}" d="M2 6h12v1h-12zM10 13h2v1h-2zM4 14h7v1h-7z"/>
-    <path fill="#eceeea" d="M4 2h7v1h-7zM3 3h9v1h-9zM3 4h9v1h-9zM4 5h8v1h-8z"/>
-    <path fill="${look.ring}" d="M5 2h5v1h-5z"/>
-    ${pose.happy ? '<path fill="#f4a6b8" d="M4 5h1v1h-1zM10 5h1v1h-1z"/>' : ""}
-    <path fill="#1b1d1c" d="${eye}"/>
-    ${pose.closed || pose.happy ? "" : '<path fill="#ffffff" d="M7 4h1v1h-1z"/>'}
-    <path fill="${pose.light}" d="M12 3h1v1h-1z"/>
-    <path fill="#1b1d1c" d="M6 8h2v1h-2zM5 9h3v1h-3zM6 10h3v1h-3z"/>
-    <path fill="${look.beak}" d="${pose.beakOpen ? "M3 7h12v1h-12zM5 8h9v1h-9z" : "M3 7h12v1h-12z"}"/>
-    <path fill="${look.shell}" d="${leg.thigh}"/><path fill="#1b1d1c" d="${leg.joint}"/>
-    <path fill="${look.foot}" d="${leg.feet}"/><path fill="${look.sole}" d="${leg.soles}"/>`;
+function ago(min) {
+  if (min < 1) return "just now";
+  if (min < 60) return Math.round(min) + " min ago";
+  if (min < 1440) return Math.round(min / 60) + " h ago";
+  const d = Math.round(min / 1440); return d + (d === 1 ? " day ago" : " days ago");
 }
-
-const pond = {t: 0, near: false, cooldown: 0, ducks: {}, petButtons: {}};
-const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-$("scene").innerHTML = background();
-
-function pondDuck(name, i) {
-  if (!pond.ducks[name]) {
-    pond.ducks[name] = {x: 30 + 120 * i, dir: i ? -1 : 1, frame: 0, emote: null, emoteT: 0, restT: 0,
-                        last: null, beakT: 0, blinkT: 0, told: false, look: LOOKS[i % LOOKS.length]};
-    const b = document.createElement("button");
-    b.className = "pet";
-    b.setAttribute("aria-label", "Pet " + title(name) + " on the screen");
-    b.addEventListener("click", () => emote(pond.ducks[name], "heart", 14));
-    $("pond").appendChild(b);
-    pond.petButtons[name] = b;
+async function refreshMap() {
+  try { M = await (await fetch("/api/map", {cache: "no-store"})).json(); drawMap(); } catch (e) { /* the status poll shows the Nest is away */ }
+}
+function drawMap() {
+  if (!M) return;
+  const {w, h} = M, cells = b64(M.cells), outside = b64(M.outside);
+  M._cells = cells;
+  M._who = b64(M.who);
+  const cv = $("flat-canvas");
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const g = cv.getContext("2d"), img = g.createImageData(w, h), px = img.data;
+  const floor = [201, 154, 106];
+  for (let i = 0; i < h; i++) for (let j = 0; j < w; j++) {
+    const c = cells[i * w + j], o = ((h - 1 - i) * w + j) * 4;   // row 0 is the room's y0: draw it at the bottom
+    let rgb;
+    if (outside[i * w + j]) rgb = [233, 226, 210];
+    else if (c === 0) rgb = ((i * 7 + j * 13) % 37 === 0) ? [36, 32, 46] : [23, 21, 31];
+    else if (c === 253) rgb = [59, 51, 70];
+    else if (c === 255) rgb = [227, 183, 124];
+    else rgb = fogRGB(floor, (c - 1) * M.bucket_min);
+    px[o] = rgb[0]; px[o + 1] = rgb[1]; px[o + 2] = rgb[2]; px[o + 3] = 255;
   }
-  return pond.ducks[name];
-}
-function emote(d, kind, ticks) { d.emote = kind; d.emoteT = ticks; d.last = kind; d.beakT = kind === "note" ? ticks : 3; }
-
-function pondTick() {
-  if (!S) return;
-  pond.t += 1;
-  const names = Object.keys(S.ducks);
-  names.forEach((name, i) => {
-    const d = pondDuck(name, i), real = S.ducks[name];
-    const band = real.tiredness in MOODS ? real.tiredness : "unknown";
-    const sleeping = real.asleep || band === "charging" || (S.quiet && S.quiet.now);
-    d.offline = !real.connected;
-    if (d.beakT > 0) d.beakT -= 1;
-    if (d.blinkT > 0) d.blinkT -= 1; else if (Math.random() < 0.02) d.blinkT = 1;
-    // Something real happened: it just told its friend something.
-    if (real.just_told && !d.told) emote(d, "bang", 14);
-    d.told = !!real.just_told;
-    if (d.emoteT > 0) { d.emoteT -= 1; if (d.emoteT === 0) d.emote = null; return; }
-    if (sleeping || d.offline || real.paused) {
-      d.frame = 0;
-      if (Math.random() < 0.01) emote(d, sleeping ? "zzz" : "ask", 18);
-      return;
-    }
-    if (d.restT > 0) { d.restT -= 1; d.frame = 0; return; }
-    // Where Reachy sees it in the room, if it can; otherwise it wanders.
-    let target = null;
-    if (real.room_xy) target = Math.max(4, Math.min(176, real.room_xy[0] / 5 * 176));
-    if (target != null && Math.abs(target - d.x) < 4) { d.frame = 0; }
-    else {
-      if (target != null) d.dir = target > d.x ? 1 : -1;
-      else if (Math.random() < 0.015) d.dir = -d.dir;
-      d.frame = 1 - d.frame;
-      d.x += d.dir * 3;
-      if (d.x < 4) { d.x = 4; d.dir = 1; }
-      if (d.x > 176) { d.x = 176; d.dir = -1; }
-    }
-    if (Math.random() < REST[band]) d.restT = 15 + Math.floor(Math.random() * 25);
-    if (Math.random() < 0.0055) {
-      const choices = MOODS[band].filter((m) => m !== d.last);
-      emote(d, choices[Math.floor(Math.random() * choices.length)] || MOODS[band][0], 16);
-    }
+  g.putImageData(img, 0, 0);
+  // Marks on top, in metres: y up, like the room frame.
+  const X = (x) => (x - M.x0), Y = (y) => (M.h * M.cell - (y - M.y0));
+  const W = w * M.cell, H = h * M.cell, r = Math.max(W, H) / 60;
+  const svg = $("flat-marks");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  let out = "";
+  if (M.reachy.view && M.reachy.watching) out += `<polygon points="${M.reachy.view.map(([x, y]) => X(x) + "," + Y(y)).join(" ")}" fill="none" stroke="#fff3c4" stroke-width="${r / 3}" stroke-dasharray="${r} ${r / 2}" opacity=".8"/>`;
+  for (const [name, [x, y]] of Object.entries(M.landmarks)) {
+    out += `<circle cx="${X(x)}" cy="${Y(y)}" r="${r * 0.6}" fill="#fff" stroke="#1c1a24" stroke-width="${r / 4}"/>`;
+    out += `<text x="${X(x) + r}" y="${Y(y) + r * 0.5}" font-size="${r * 1.8}" fill="#fff" stroke="#1c1a24" stroke-width="${r / 2.5}" paint-order="stroke" font-family="Atkinson Hyperlegible, sans-serif">${esc(name)}</text>`;
+  }
+  const [rx, ry] = M.reachy.xy;
+  out += `<rect x="${X(rx) - r}" y="${Y(ry) - r}" width="${2 * r}" height="${2 * r}" rx="${r / 3}" fill="#f3f2ec" stroke="#1c1a24" stroke-width="${r / 3}"/>`;
+  Object.entries(M.ducks).forEach(([name, d], i) => {
+    const col = DUCK_COLOURS[i % DUCK_COLOURS.length];
+    if (!d.hatched && d.bed) out += `<ellipse cx="${X(d.bed[0])}" cy="${Y(d.bed[1])}" rx="${r * 0.9}" ry="${r * 1.2}" fill="#f6f0e2" stroke="${col}" stroke-width="${r / 2.5}"/>`;
+    else if (d.xy) out += `<circle cx="${X(d.xy[0])}" cy="${Y(d.xy[1])}" r="${r * 1.2}" fill="${col}" stroke="#1c1a24" stroke-width="${r / 3}"/>`;
   });
-  // A greeting only when they first meet, at most once every ~40 s, and not always a heart.
-  const [a, b] = names.slice(0, 2).map((n) => pond.ducks[n]);
-  pond.cooldown = Math.max(0, pond.cooldown - 1);
-  if (a && b) {
-    const near = Math.abs(a.x - b.x) < 44;
-    if (near && !pond.near && pond.cooldown === 0 && !a.emote && !b.emote && !a.offline && !b.offline) {
-      a.dir = b.x >= a.x ? 1 : -1; b.dir = -a.dir;
-      if (Math.random() < 0.45) { emote(a, "heart", 16); emote(b, "heart", 16); }
-      else { emote(a, "note", 12); a.restT = 6; b.restT = 10; }
-      pond.cooldown = 235;
-    }
-    pond.near = near;
-  }
-  drawPond();
+  svg.innerHTML = out;
+  // words
+  $("map-intro").textContent = !M.calibrated
+    ? "The map starts once Reachy's view of the floor is calibrated (SETUP.md, step 4). Until then, only the walkthrough and the ducks can fill it in."
+    : M.walkthrough ? "Your walkthrough drew the flat. Reachy and the ducks keep it up to date: anything they haven't looked at lately fades."
+    : "Reachy's view of the lounge fills this in. The rest of the flat stays black until the walkthrough or the ducks get there.";
+  $("map-coverage").textContent = `Seen by Reachy or the ducks: ${M.coverage.seen}% of the floor. In the last 12 hours: ${M.coverage.fresh}%.`;
+  put($("map-things"), (M.things || []).map((t) => `<li><b>${esc(t.obj)}</b> ${esc(t.where)} <span class="muted">· ${ago((Date.now() / 1000 - t.at) / 60)}</span></li>`).join("")
+    || `<li class="muted">Nothing yet. Reachy's diary needs the vision model and its camera switched on (SETUP.md).</li>`);
+  $("map-sim").hidden = !(S && S.sim);
+  if (S && S.sim) put($("sim-power"), Object.entries(S.ducks).map(([n, d]) =>
+    `<button class="chip" data-power="${esc(n)}" aria-pressed="${d.connected}">${esc(title(n))}: ${d.connected ? "switch off" : d.hatched === false ? "switch on (hatch!)" : "switch on"}</button>`).join(""));
 }
-
-function drawPond() {
-  const names = Object.keys(S.ducks);
-  const t = pond.t;
-  $("cloudA").setAttribute("transform", `translate(${((Math.floor(t / 6) + 20) % 200) - 20} 12)`);
-  $("cloudB").setAttribute("transform", `translate(${((Math.floor(t / 9) + 120) % 200) - 20} 22)`);
-  $("ripple").setAttribute("fill", Math.floor(t / 4) % 2 ? "#bfe0f0" : "#7fb2d4");
-  const labels = names.slice(0, 2).map((n, i) => {
-    const pct = S.ducks[n].battery_percent == null ? "--" : Math.round(S.ducks[n].battery_percent) + "%";
-    const text = esc(title(n).toUpperCase()) + " " + pct;
-    return i === 0 ? `<text x="10" y="18">${text}</text>` : `<text x="340" y="18" text-anchor="end">${text}</text>`;
-  }).join("");
-  put($("labels"), labels);
-  const scale = $("pond").clientWidth / 350;  // the scene fills the pond's inner box
-  $("ducks").innerHTML = names.map((name, i) => {
-    const d = pondDuck(name, i), real = S.ducks[name];
-    const y = 142 - 16 - 63 - (d.frame ? 2 : 0);
-    const pose = {frame: d.frame, closed: d.emote === "zzz" || d.blinkT > 0 || real.asleep || real.tiredness === "charging" || (S.quiet && S.quiet.now),
-                  happy: d.emote === "heart" || d.emote === "note", beakOpen: d.beakT > 0 && d.beakT % 2 === 1,
-                  light: (t + i * 3) % 8 < 4 ? "#e2474b" : "#4a8fd9"};
-    const flip = d.dir < 0 ? `translate(${d.x + 48} ${y}) scale(-3 3)` : `translate(${d.x} ${y}) scale(3)`;
-    let bubble = "";
-    if (d.emote) {
-      const ic = ICONS[d.emote];
-      bubble = `<path fill="${ic.fill}" transform="translate(${d.x + 24 - ic.w * 2} ${y - 4 - ic.h * 4}) scale(4)" d="${ic.d}"/>`;
-    }
-    const pet = pond.petButtons[name];
-    if (pet) Object.assign(pet.style, {left: d.x * scale + "px", top: y * scale + "px",
-                                       width: 48 * scale + "px", height: 63 * scale + "px"});
-    return `<g opacity="${d.offline ? 0.45 : 1}"><g transform="${flip}">${sprite(d.look, pose)}</g>${bubble}</g>`;
-  }).join("");
-}
+$("flat").addEventListener("click", (e) => {
+  if (!M || !M._cells) return;
+  const rect = $("flat-canvas").getBoundingClientRect();
+  const j = Math.floor((e.clientX - rect.left) / rect.width * M.w);
+  const i = M.h - 1 - Math.floor((e.clientY - rect.top) / rect.height * M.h);
+  if (i < 0 || j < 0 || i >= M.h || j >= M.w) return;
+  const c = M._cells[i * M.w + j], who = M.legend[M._who[i * M.w + j]] || "";
+  const x = (M.x0 + (j + 0.5) * M.cell).toFixed(1), y = (M.y0 + (i + 0.5) * M.cell).toFixed(1);
+  const nearest = Object.entries(M.landmarks).map(([n, [lx, ly]]) => [Math.hypot(lx - x, ly - y), n]).sort((a, b) => a[0] - b[0])[0];
+  const where = nearest && nearest[0] < 1.2 ? "Near the " + nearest[1] : `At ${x}, ${y} m`;
+  const what = c === 0 ? "never seen" : c === 253 ? "a wall or furniture, from your walkthrough"
+    : c === 255 ? "in view right now" + (who ? " (" + title(who) + ")" : "")
+    : `last seen ${ago((c - 1) * M.bucket_min)}${who ? " by " + (who === "reachy" ? "Reachy" : who === "your walkthrough" ? "your walkthrough" : title(who)) : ""}`;
+  $("map-info").textContent = `${where}: ${what}.`;
+});
+$("sim-power").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-power]"); if (!b) return;
+  try { await post(`/api/sim/power/${encodeURIComponent(b.dataset.power)}`); } catch (err) { $("map-info").textContent = err.message; }
+  refresh();
+});
+setInterval(() => { if (!$("panel-map").hidden) refreshMap(); }, 3000);
 
 // ── polling ──────────────────────────────────────────────────────────────────
 function renderAll() {
@@ -597,7 +548,6 @@ function renderAll() {
     : "";
   $("reachy").classList.toggle("sim", !!S.sim);
   if (S.sim) $("reachy-text").textContent += " · SIMULATION";
-  names.forEach(pondDuck);
   renderCare(); renderSaw(); renderNight();
 }
 async function refresh() {
@@ -606,13 +556,15 @@ async function refresh() {
     S = await r.json();
     $("offline").hidden = true;
     renderAll();
-    if (reduceMotion) drawPond();
+    if (reduceMotion) PondScene.draw(S);
   } catch (e) { $("offline").hidden = false; }
 }
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+PondScene.init($("pond"));
 refresh();
 setInterval(refresh, 1500);
-if (!reduceMotion) setInterval(pondTick, 170);
-window.addEventListener("resize", () => S && drawPond());
+if (!reduceMotion) setInterval(() => PondScene.tick(S), 170);
+window.addEventListener("resize", () => S && PondScene.draw(S));
 </script>
 </body>
 </html>

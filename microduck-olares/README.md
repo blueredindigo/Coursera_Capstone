@@ -11,7 +11,9 @@ other about them.
 > **Everything stays on the local network.**
 
 > **Status (26 Sep 2026):** the software for phases 0–3 is built, with groundwork for phases
-> 4–6. It lives in [`nest/`](nest/): the Nest runs on the Jetson, talks to both ducks over
+> 4–6, and ready for the months before the ducks arrive: the Nest runs with Reachy alone (the
+> ducks are eggs until hatch day), Reachy maps the lounge with fog of war (§15, M1) and keeps a
+> diary, and the walkthrough pipeline for the Gaussian maps and the anchor-tag sheet are ready. It lives in [`nest/`](nest/): the Nest runs on the Jetson, talks to both ducks over
 > their own LAN WebRTC control channel and to Reachy Lite over its local API, and has the needs,
 > tiredness gauge, safety gate, landmark memory, Duckdex and duck bus. It is tested in a
 > simulated living room and against a stand-in for the duck's WebRTC server, **not yet on the
@@ -755,6 +757,23 @@ plan is lost.
 - Milestone: after a walk, the stay-home duck "tastes" a leaf from the feeder and watches the
   slideshow.
 
+**Phase 11: mapping the flat (§15)**
+- An interactive mock of how this looks and behaves: [`mockups/flat-map.html`](mockups/flat-map.html).
+- **M1 (built):** fog of war over the lounge floor in Reachy's view, cleared where the ducks
+  walk and fading again with time, in the Pond's Map tab (`nest/nest/world/floormap.py`).
+- **M2 (pipeline built, not yet run):** the 9 AprilTags (`tags/anchor-tags.pdf`) and your
+  walkthrough. First Gaussian map per room on Olares, and the floor grid seeded from it
+  (`olares/walkthrough`).
+- **M3:** the ducks' ToF building the floor grid, and scout-pose snapshots with positions.
+  Doors, thresholds and the balcony's glass line.
+- **M4:** exploration mode: frontiers, sorties with battery and drift budgets, and the two ducks
+  splitting the flat.
+- **M5:** render-and-compare change detection, fog that fades differently for each kind of
+  thing, room retraining, and the timeline.
+- Milestone: after a day of sorties, the Map tab shows the whole flat. You move the green chair,
+  and by the evening Ah-Ah has noticed, told Tee-Tee, and the lounge's Gaussian map shows it in
+  its new place.
+
 **Later: human speech** (§13), and **social beak boops** if the antennas allow it.
 
 ---
@@ -797,3 +816,156 @@ On hold until the foundation works well. Kept here so nothing's lost:
 - **NFC is hardware today, software later.** Pollen lists two NFC antennas (head and beak), but
   the public repo has no NFC interface yet. Build the NFC ideas against whatever Pollen exposes,
   and don't hack a reader service onto the robot image, because the updater replaces it.
+
+---
+
+## 15. Mapping the flat: fog of war and the Gaussian map
+
+The ducks map the whole flat and keep the map up to date, like the fog of war in Age of Empires
+or StarCraft: somewhere never seen is black, somewhere seen before shows what it looked like last
+time, faded, and it sharpens again when a duck goes back. On top of that sits a photoreal
+**Gaussian map** of every room that you can orbit around in the Pond.
+
+### The flat
+
+About 70 m²: the **lounge with the open kitchen**, **two bedrooms**, **two bathrooms**, and a
+**5 m² balcony**. Reachy sits on the TV stand in the lounge, and the chargers are there too, in
+Reachy's view. **No room is off limits**, but the bathroom doors are often closed.
+
+Because the chargers are in Reachy's view, **every trip starts and ends where the Nest knows
+exactly where the duck is**. Drift in a duck's own position estimate is reset at the start and
+end of every trip.
+
+### Four layers, each on the right box
+
+| Layer | What it holds | Built from | Runs on |
+|---|---|---|---|
+| **1. Floor grid** | 5 cm cells, about 32,000 for the flat: free, blocked, drop, door, threshold, fence, or unknown. Each cell has a last-seen time and who saw it | The walkthrough, the ducks' ToF, where they have walked, Reachy's view of the lounge floor | Jetson, live |
+| **2. Things** | Landmarks and objects, each with a last-seen time and confidence (the scene memory the Nest already has) | Detectors, the captioner, what the ducks tell each other | Jetson |
+| **3. Snapshots** | Photos with the position and direction they were taken from | Duck cameras in scout pose, Reachy | Olares disk |
+| **4. Gaussian map** | One 3D Gaussian splat per room | Your walkthrough, then fresh snapshots | Olares GPU, batch, daytime |
+
+The ducks steer by layers 1 and 2. The Gaussian map is for looking, and for spotting changes
+(below). It never drives a motor.
+
+### Fog of war
+
+- **Black: never seen.** Mostly under beds, behind the sofa, and inside cupboards left open,
+  because the walkthrough seeds everything else.
+- **Fog: seen before.** It shows the last known state, desaturated, with its age ("kitchen: last
+  seen 2 days ago"). What you saw in the walkthrough starts here: surveyed, but not yet visited
+  by a duck. Turning on **"start blind"** hides the walkthrough from the game view, so the
+  ducks discover the flat from black.
+- **Clear: seen right now.** Reachy's camera view of the lounge floor (from the floor
+  calibration), and each duck's camera and ToF cone.
+
+**Fog thickens at different speeds for different things.** Walls, doorways and the sofa stay
+trusted for weeks. Chairs are trusted for days. Toys and shoes are trusted for hours. Thick fog
+over a spot where something used to be is a reason to go and look, so stale information becomes
+food for curiosity.
+
+### Doors, thresholds and the balcony
+
+- **Doors are their own kind of cell, with a state:** open, closed, or unknown, plus when it was
+  last checked. A closed bathroom door is not a wall. The room behind it keeps its last fogged
+  state, and exploring it is **suspended, not abandoned**: a duck passing by checks the door, and
+  when it's open again the room is back on the list. In the daytime, a curious duck gives a
+  closed door one soft `inquire` chirp, a knock, and then moves on.
+- **Thresholds.** Door sills and the balcony sill might be too high for a duck to step over. The
+  ToF sees the step. The duck tries once, and if it can't cross, the map marks the sill "can't
+  cross yet". That's a dojo goal (§7): learning to step over it is growing up.
+- **Bathrooms.** Wet tiles make feet slip, which makes position drift. Each bathroom gets its
+  own anchor tag inside (below), and the ToF drop check stays on around the shower tray.
+- **The balcony is fully on the map.** It has a uniform glass barrier with no gaps, so there's
+  nothing to fall through, and no virtual fence is needed. The glass is a wall to the ducks'
+  feet, but a window to their eyes: the ToF can miss clear glass, so the walkthrough marks the
+  barrier line and the grid treats it as solid. The ducks go out in the daytime whenever the
+  balcony door is open, and the door sill is the only thing to learn (above).
+
+### Knowing where a duck is: anchors
+
+Outside Reachy's view, a duck only has its walking odometry, and legs slip. So the flat gets
+**printed AprilTags** (the 36h11 family, about 10 cm square, at the duck's eye height), which
+snap a duck's position back to exact whenever it sees one:
+
+| Where | Tags |
+|---|---|
+| Lounge: one at the Nest, one across the room | 2 |
+| Kitchen | 1 |
+| Hallway | 1 |
+| Bedrooms, one each | 2 |
+| Bathrooms, one each, inside | 2 |
+| Balcony door | 1 |
+
+That's **9 tags**. The dev kit has 10 NFC tags, so once Pollen exposes NFC, one sticker under
+each AprilTag gives a second, touch-based anchor, and a duck can "plant a flag" by pecking it.
+
+Every trip also has a **drift budget**: how far a duck may walk since its last anchor before it
+turns back toward one. That budget matters more than battery in a flat this size; the furthest
+room is only a few metres from the chargers.
+
+### Exploration mode
+
+- **Frontiers.** A duck goes to the edge between the free floor it knows and black or thick
+  fog. That's the standard robot exploration method, and easy to follow on the map.
+- **Sorties from the Nest.** A duck goes out, surveys, and comes home before its battery or drift
+  budget runs out. It tells the other duck what it found (the duck bus, §6) and takes a pit stop.
+- **Scout pose.** A duck doesn't take snapshots while walking: the camera is low and shakes. At
+  each survey spot it stops, pans its head, snaps 3–5 frames and moves on. It looks like a little
+  surveyor at work.
+- **Two ducks split the flat.** They claim rooms over the duck bus ("I'll take the bedrooms,
+  you take the kitchen and the balcony") so they never scout the same corner.
+- **When it runs:** from a button in the Pond, or on its own when curiosity is high and the fog
+  is thick. Never in quiet hours: at night the fog visibly creeps back over the map, and in the
+  morning the ducks have somewhere to go.
+- **Rewards:** new cells feed curiosity. Duckdex entries like "first into the second bedroom",
+  and an "explored today" score in the Pond.
+
+### Your walkthrough: the first Gaussian map
+
+Do this once, after the AprilTags are up, so they appear in the video. The tags give the splat
+real-world scale and pin it to the same floor as the grid.
+
+1. **Daytime, all lights on, every door open** (bathrooms too), nobody else in shot.
+2. Lock exposure and focus on your phone (tap and hold), no zoom, 4K at 30 fps or 1080p at 60.
+3. **Room by room, 1–2 minutes each.** Walk slowly along the walls with the phone pointing
+   into the room, once at chest height and **once low, about 20 cm off the floor**. The low loop
+   gives the splat duck's-eye views, so it matches what the ducks see later.
+4. **Film through each doorway** as you go from room to room, so the rooms join up.
+5. **Keep it off the cloud:** copy the videos to Olares over the LAN, and make sure your phone's
+   photo backup doesn't upload them first.
+
+On Olares, in the daytime:
+- Extract frames and drop any with a person in them.
+- Find camera poses with COLMAP or GLOMAP, and use the AprilTags in the frames to fix scale and
+  the floor plane.
+- Train one splat per room with gsplat.
+- Project the result onto the floor to seed layer 1: walls, doorways, furniture footprints, the
+  balcony's glass barrier.
+- Label the rooms by which tags are in them.
+
+The walkthrough seeds the map with where things are. After that, the ducks keep it true.
+
+### Keeping it fresh, and spotting changes
+
+- **Render and compare.** For each snapshot a duck takes, Olares renders the view the splat
+  expects from the same position and compares it with the real photo. Where they differ,
+  something has changed. That becomes a map update and a rumour on the duck bus ("the green
+  chair moved about 40 cm", "something new by the sofa"), just like the yellow ball.
+- **Room retraining.** When a room has enough new snapshots, or a real change, Olares retrains
+  that room's splat, in the daytime. Old versions are kept for the timeline.
+
+### In the Pond
+
+A **Map** tab:
+- the isometric pixel flat, one tile per 50 cm, drawn from the floor grid;
+- fog of war, both ducks, and door states;
+- tap a room to open its Gaussian map in a 3D viewer that is bundled with the Nest, not loaded
+  from the internet;
+- a **timeline slider**: "the lounge last Tuesday".
+
+### Privacy
+
+- Frames with a person in them are thrown away on the Jetson before they're stored or used to
+  train, so the toddler never ends up in a splat.
+- Snapshots and splats live on Olares, and nothing leaves the LAN.

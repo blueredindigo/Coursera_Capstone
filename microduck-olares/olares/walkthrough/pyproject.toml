@@ -1,0 +1,16 @@
+[project]
+name = "walkthrough"
+version = "0.1.0"
+description = "Walkthrough videos → per-room Gaussian maps and a floor plan for the Nest."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "opencv-contrib-python-headless>=4.7", "tomli; python_version < '3.11'"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+include = ["walkthrough*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,18 @@
+# Copy to <your walkthrough folder>/tags.toml.
+
+size_mm = 100            # the black square, as you measured it on the print
+centre_height_cm = 20    # every tag's centre above the floor
+
+# Tags you measured in the room frame: the same frame, with the same origin and axes, as the
+# floor calibration of Reachy's view (SETUP.md). Two in the lounge are enough. With only one,
+# also give the direction its face points (degrees from the room's +x axis, anticlockwise).
+# Every other tag, and every other room, is placed from these.
+[[tag]]
+id = 0                   # lounge, by the Nest
+x = 0.40
+y = 2.10
+
+[[tag]]
+id = 1                   # lounge, across the room
+x = 4.60
+y = 3.30

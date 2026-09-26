@@ -32,6 +32,17 @@ Reply with only a JSON array like:
 "confidence": 0.8}}]
 Use lowercase. Leave "near" empty if there is no second landmark. Reply [] if you see nothing."""
 
+# Reachy looks down over the lounge from the TV stand: a different view, the same answer shape.
+REACHY_PROMPT = """You are the eyes of a small robot sitting on a TV stand, looking over a
+living room. List small movable objects you can clearly see on the floor or furniture (toys,
+balls, socks, keys, shoes, cushions). Ignore people and large furniture.
+For each, say where it is relative to ONE of these landmarks, if one is visible: {landmarks}.
+Use one relation from: {relations}.
+Reply with only a JSON array like:
+[{{"object": "yellow ball", "relation": "under", "landmark": "table", "near": "sofa",
+"confidence": 0.8}}]
+Use lowercase. Leave "near" empty if there is no second landmark. Reply [] if you see nothing."""
+
 
 class Captioner:
     def __init__(self, base_url: str = "http://localhost:11434", model: str = "qwen2.5vl:3b",
@@ -45,8 +56,9 @@ class Captioner:
     async def close(self) -> None:
         await self._http.aclose()
 
-    async def describe(self, png: bytes, landmarks: list[str]) -> list[dict[str, Any]]:
-        prompt = PROMPT.format(landmarks=", ".join(landmarks) or "none known yet",
+    async def describe(self, png: bytes, landmarks: list[str],
+                       viewer: str = "duck") -> list[dict[str, Any]]:
+        prompt = (REACHY_PROMPT if viewer == "reachy" else PROMPT).format(landmarks=", ".join(landmarks) or "none known yet",
                                relations=", ".join(RELATIONS))
         response = await self._http.post(f"{self.base}/api/chat", json={
             "model": self.model, "stream": False, "format": "json",
