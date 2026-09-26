@@ -11,7 +11,9 @@ other about them.
 > **Everything stays on the local network.**
 
 > **Status (26 Sep 2026):** the software for phases 0–3 is built, with groundwork for phases
-> 4–6. It lives in [`nest/`](nest/): the Nest runs on the Jetson, talks to both ducks over
+> 4–6, and ready for the months before the ducks arrive: the Nest runs with Reachy alone (the
+> ducks are eggs until hatch day), Reachy maps the lounge with fog of war (§15, M1) and keeps a
+> diary, and the walkthrough pipeline for the Gaussian maps and the anchor-tag sheet are ready. It lives in [`nest/`](nest/): the Nest runs on the Jetson, talks to both ducks over
 > their own LAN WebRTC control channel and to Reachy Lite over its local API, and has the needs,
 > tiredness gauge, safety gate, landmark memory, Duckdex and duck bus. It is tested in a
 > simulated living room and against a stand-in for the duck's WebRTC server, **not yet on the
@@ -757,10 +759,11 @@ plan is lost.
 
 **Phase 11: mapping the flat (§15)**
 - An interactive mock of how this looks and behaves: [`mockups/flat-map.html`](mockups/flat-map.html).
-- **M1:** fog of war over the lounge floor in Reachy's view, cleared where the ducks walk and
-  fading again with time. The Pond's room becomes the real lounge.
-- **M2:** the 9 AprilTags and your walkthrough. First Gaussian map per room on Olares, and the
-  floor grid seeded from it.
+- **M1 (built):** fog of war over the lounge floor in Reachy's view, cleared where the ducks
+  walk and fading again with time, in the Pond's Map tab (`nest/nest/world/floormap.py`).
+- **M2 (pipeline built, not yet run):** the 9 AprilTags (`tags/anchor-tags.pdf`) and your
+  walkthrough. First Gaussian map per room on Olares, and the floor grid seeded from it
+  (`olares/walkthrough`).
 - **M3:** the ducks' ToF building the floor grid, and scout-pose snapshots with positions.
   Doors, thresholds and the balcony's glass line.
 - **M4:** exploration mode: frontiers, sorties with battery and drift budgets, and the two ducks
