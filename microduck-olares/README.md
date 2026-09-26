@@ -756,6 +756,7 @@ plan is lost.
   slideshow.
 
 **Phase 11: mapping the flat (§15)**
+- An interactive mock of how this looks and behaves: [`mockups/flat-map.html`](mockups/flat-map.html).
 - **M1:** fog of war over the lounge floor in Reachy's view, cleared where the ducks walk and
   fading again with time. The Pond's room becomes the real lounge.
 - **M2:** the 9 AprilTags and your walkthrough. First Gaussian map per room on Olares, and the

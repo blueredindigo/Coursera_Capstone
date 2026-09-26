@@ -1,0 +1,858 @@
+<title>The Flat in Fog</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Press+Start+2P&display=swap">
+<style>
+:root{color-scheme:light;--ground:#f4f0e6;--sand:#e6e0d1;--card:#fff;--line:#e0d9c8;--line2:#d8d0bd;--ink:#1e2421;--ink2:#3b433f;--dim:#56605b;--teal:#1f5f5b;--teal-dark:#14413e;--teal-tint:#dcebe8;--night:#1d2a3a;--moon:#f2c14e;--warn:#9a4712;--serif:"Fraunces",Georgia,serif}
+body{background:var(--ground);color:var(--ink);font:16px/1.45 "Atkinson Hyperlegible",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding-inline:16px;padding-block:20px 40px;display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-family:var(--serif);font-size:28px;text-wrap:balance}
+h2{margin:0;font-family:var(--serif);font-size:18px;font-weight:600}
+p{margin:0}
+.muted{color:var(--dim);font-size:14px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.clock{font:11px/1 "Press Start 2P",monospace;padding:8px 10px;border-radius:10px;background:var(--ink);color:#f4f0e6;font-variant-numeric:tabular-nums}
+.clock.night{background:var(--night);color:var(--moon)}
+.map{position:relative;border-radius:18px;overflow:hidden;border:4px solid #1c1a24;background:#e9e2d2;aspect-ratio:320/184;max-width:100%;cursor:crosshair}
+.map canvas{position:absolute;inset:0;width:100%;height:100%;display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+.info{min-height:1.5em;font-size:14px;color:var(--ink2)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:1px solid #1c1a24;display:inline-block}
+.cols{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
+.stack{display:flex;flex-direction:column;gap:14px}
+.card{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:20px;background:var(--card);border:1px solid var(--line)}
+.row{display:flex;flex-wrap:wrap;gap:6px}
+.label{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.chip{min-height:38px;padding:0 12px;border-radius:99px;border:1px solid #c9c0ab;background:var(--card);color:var(--ink);cursor:pointer;font:inherit;font-size:14px}
+.chip[aria-pressed="true"]{border:2px solid var(--teal);background:var(--teal-tint);color:var(--teal-dark);font-weight:700}
+.chip:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+.ducks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media (max-width:460px){.ducks{grid-template-columns:1fr}}
+.duck{display:flex;flex-direction:column;gap:6px;padding:12px 14px;border-radius:16px;border:1px solid var(--line2);background:var(--card)}
+.duck b{font-family:var(--serif);font-size:17px}
+.duck .now{font-size:14px;color:var(--ink2);min-height:2.9em}
+.meter{height:8px;border-radius:99px;background:var(--sand);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--teal)}
+.meter.low i{background:var(--warn)}
+.small{font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th{text-align:left;font-weight:400;color:var(--dim);font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:0 0 6px}
+td{padding:5px 0;border-top:1px solid var(--line)}
+td:not(:first-child),th:not(:first-child){text-align:right}
+.log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--ink2);max-height:260px;overflow:auto}
+.log time{font:9px/1.6 "Press Start 2P",monospace;color:var(--dim);margin-right:8px}
+</style>
+<main>
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <h1>The Flat in Fog</h1>
+    <p class="muted">A mock of mapping the flat with fog of war. Reachy watches the lounge from the TV stand. Ah-Ah and Tee-Tee head out from the chargers on short trips and come back to charge. Wherever something has been seen, the map keeps the last picture of it, fading with age, until someone looks again. The layout is a stand-in for your 70 m² flat: 2 bedrooms, 2 bathrooms, the lounge with open kitchen, and the balcony behind glass.</p>
+  </header>
+
+  <div class="bar">
+    <span class="clock" id="clock">DAY 1 10:00</span>
+    <div class="row" role="group" aria-label="Clock speed">
+      <button class="chip speed" type="button" data-rate="2">2 min/s</button>
+      <button class="chip speed" type="button" data-rate="10" aria-pressed="true">10 min/s</button>
+      <button class="chip speed" type="button" data-rate="60">1 h/s</button>
+    </div>
+    <button class="chip" type="button" id="skip">Skip to 9:00</button>
+  </div>
+
+  <div class="map" id="map"></div>
+  <p class="info" id="info">Tap anywhere on the map to see what's known about that spot.</p>
+  <div class="legend">
+    <span><i class="sw" style="background:#17151f"></i>Never seen</span>
+    <span><i class="sw" style="background:#7d7a86"></i>Seen before (darker is older)</span>
+    <span><i class="sw" style="background:#d4a64a"></i>In view right now</span>
+    <span><i class="sw" style="background:#fff;box-shadow:inset 0 0 0 3px #fff,inset 0 0 0 4px #1c1a24"></i>Anchor tag</span>
+  </div>
+
+  <div class="cols">
+    <div class="stack">
+      <section class="card">
+        <h2>Try it</h2>
+        <div><div class="label">Start the map from</div>
+          <div class="row" role="group" aria-label="Start the map from">
+            <button class="chip seed" type="button" data-seed="walk" aria-pressed="true">Your walkthrough, 3 days ago</button>
+            <button class="chip seed" type="button" data-seed="blind">Start blind</button>
+          </div></div>
+        <div><div class="label">Exploration</div>
+          <div class="row"><button class="chip" type="button" id="explore" aria-pressed="true">Exploration mode on</button></div></div>
+        <div><div class="label">Doors</div>
+          <div class="row">
+            <button class="chip door" type="button" data-door="bath1" aria-pressed="false">Close bathroom 1</button>
+            <button class="chip door" type="button" data-door="bath2" aria-pressed="false">Close bathroom 2</button>
+          </div></div>
+        <div><div class="label">Change the flat</div>
+          <div class="row">
+            <button class="chip" type="button" id="move-chair">Move the green chair</button>
+            <button class="chip" type="button" id="throw-ball">Hide the yellow ball</button>
+          </div></div>
+      </section>
+      <div class="ducks" id="ducks"></div>
+    </div>
+    <div class="stack">
+      <section class="card">
+        <h2>Rooms</h2>
+        <table><thead><tr><th>Room</th><th>Seen by robots</th><th>Last looked</th></tr></thead><tbody id="rooms"></tbody></table>
+        <p class="small" id="coverage"></p>
+      </section>
+      <section class="card">
+        <h2>What happened</h2>
+        <ul class="log" id="log" aria-live="polite"></ul>
+      </section>
+    </div>
+  </div>
+  <p class="muted">What's mocked: the floor plan, the ducks' walking pace (sped up so you can watch), and what they see (a simple line-of-sight cone). What's real to the plan: 25 cm fog cells, Reachy's view clearing the lounge, the anchor tags that reset a duck's position, trips cut short by battery or distance since the last tag, the two ducks splitting rooms, closed doors pausing a room, and old information staying until someone looks again.</p>
+</main>
+<script>
+(function () {
+  "use strict";
+  // ── geometry ──────────────────────────────────────────────────────────────
+  const W = 320, H = 184, TW = 16, TH = 8, OX = 152, OY = 24;
+  const GX = 20, GY = 18, SUB = 2, FX = GX * SUB, FY = GY * SUB, NC = FX * FY;
+  const OUTLINE = "#1c1a24";
+  const STALE = 12 * 60;                // minutes before a seen cell is worth another look
+  const PLAN = [
+    "LLLLLLLLKKKKbbbbbbbb",
+    "LLLLLLLLKKKKbbbbbbbb",
+    "LLLLLLLLKKKKbbbbbbbb",
+    "LLLLLLLLKKKKbbbbbbbb",
+    "LLLLLLLLKKKKbbbbbbbb",
+    "LLLLLLLLKKKKbbbbwwww",
+    "LLLLLLLLHHHHHHHHwwww",
+    "LLLLLLLLHHHHHHHHwwww",
+    "LLLLLLLLHHHHssssssss",
+    "LLLLLLLLvvvvssssssss",
+    "LLLLLLLLvvvvssssssss",
+    "LLLLLLLLvvvvssssssss",
+    "LLLLLLLLvvvvssssssss",
+    "LLLLLLLLvvvvssssssss",
+    "ooooo...............",
+    "ooooo...............",
+    "ooooo...............",
+    "ooooo...............",
+  ];
+  const ROOMS = {L: "Lounge", K: "Kitchen", H: "Hallway", b: "Bedroom 1", w: "Bathroom 1", s: "Bedroom 2", v: "Bathroom 2", o: "Balcony"};
+  const zone = (x, y) => (y >= 0 && y < GY && x >= 0 && x < GX) ? PLAN[y][x] : ".";
+  const group = (c) => c === "K" ? "L" : c;
+  const DOORS = {
+    "v:8,6": {open: true, arch: true}, "v:8,7": {open: true, arch: true},
+    "h:13,6": {open: true, room: "b"},
+    "v:16,6": {open: true, room: "w", id: "bath1", name: "bathroom 1"},
+    "h:13,8": {open: true, room: "s"},
+    "h:9,9": {open: true, room: "v", id: "bath2", name: "bathroom 2"},
+    "h:1,14": {open: true, arch: true}, "h:2,14": {open: true, arch: true},
+  };
+  const doorById = (id) => Object.entries(DOORS).find(([, d]) => d.id === id);
+  const edgeKey = (ax, ay, bx, by) => ax !== bx ? "v:" + Math.max(ax, bx) + "," + ay : "h:" + ax + "," + Math.max(ay, by);
+  function passEdge(ax, ay, bx, by) {
+    const za = zone(ax, ay), zb = zone(bx, by);
+    if (za === "." || zb === ".") return false;
+    if (group(za) === group(zb)) return true;
+    const d = DOORS[edgeKey(ax, ay, bx, by)];
+    return !!(d && d.open);
+  }
+  function passTiles(ax, ay, bx, by) {
+    if (ax === bx && ay === by) return true;
+    if (ax === bx || ay === by) return passEdge(ax, ay, bx, by);
+    return (passEdge(ax, ay, bx, ay) && passEdge(bx, ay, bx, by)) || (passEdge(ax, ay, ax, by) && passEdge(ax, by, bx, by));
+  }
+  const iso = (gx, gy, z) => [OX + (gx - gy) * TW / 2, OY + (gx + gy) * TH / 2 - (z || 0)];
+  const cellAt = (gx, gy) => Math.max(0, Math.min(FY - 1, Math.floor(gy * SUB))) * FX + Math.max(0, Math.min(FX - 1, Math.floor(gx * SUB)));
+  const cellZone = (c) => zone((c % FX) >> 1, ((c / FX) | 0) >> 1);
+  const floorCell = new Uint8Array(NC);
+  for (let c = 0; c < NC; c++) floorCell[c] = cellZone(c) !== "." ? 1 : 0;
+
+  // ── colour ────────────────────────────────────────────────────────────────
+  const hex = (c) => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const toHex = (r, g, b) => "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0")).join("");
+  function shade(c, f) {
+    const [r, g, b] = hex(c);
+    return f >= 0 ? toHex(r + (255 - r) * f, g + (255 - g) * f, b + (255 - b) * f) : toHex(r * (1 + f), g * (1 + f), b * (1 + f));
+  }
+  function fogRGB(r, g, b, age) {
+    const l = r * 0.3 + g * 0.59 + b * 0.11, m = 0.62;
+    const k = 0.74 - 0.32 * Math.min(1, age / (3 * 1440));
+    return [(r * (1 - m) + l * m) * k + 4, (g * (1 - m) + l * m) * k + 6, (b * (1 - m) + l * m) * k + 18];
+  }
+  const fogHex = (c, age) => toHex(...fogRGB(...hex(c), age == null ? 1440 : age));
+
+  // ── voxel sprites (the Pond's renderer) ───────────────────────────────────
+  const VX = 2, VY = 1, VZ = 2;
+  function renderVoxels(voxels, tf) {
+    voxels.sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]) || a[2] - b[2] || a[0] - b[0]);
+    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    const pos = voxels.map(([x, y, z]) => {
+      const px = (x - y) * VX, py = (x + y) * VY - z * VZ;
+      minX = Math.min(minX, px - 2); maxX = Math.max(maxX, px + 2); minY = Math.min(minY, py); maxY = Math.max(maxY, py + 4);
+      return [px, py];
+    });
+    const pad = 2, w = maxX - minX + pad * 2, h = maxY - minY + pad * 2;
+    const grid = new Array(w * h).fill(null);
+    const put = (x, y, c) => { if (x >= 0 && y >= 0 && x < w && y < h) grid[y * w + x] = c; };
+    voxels.forEach(([, , , c0], i) => {
+      const c = tf ? tf(c0) : c0;
+      const x = pos[i][0] - minX + pad - 2, y = pos[i][1] - minY + pad;
+      const top = shade(c, 0.18), left = c, right = shade(c, -0.22);
+      put(x + 1, y, top); put(x + 2, y, top);
+      for (let k = 0; k < 4; k++) put(x + k, y + 1, top);
+      for (const yy of [y + 2, y + 3]) { put(x, yy, left); put(x + 1, yy, left); put(x + 2, yy, right); put(x + 3, yy, right); }
+    });
+    const out = grid.slice(), edge = tf ? "#2a2833" : OUTLINE;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (grid[y * w + x]) continue;
+      if ((x > 0 && grid[y * w + x - 1]) || (x < w - 1 && grid[y * w + x + 1]) || (y > 0 && grid[(y - 1) * w + x]) || (y < h - 1 && grid[(y + 1) * w + x])) out[y * w + x] = edge;
+    }
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    const g = canvas.getContext("2d");
+    out.forEach((c, i) => { if (c) { g.fillStyle = c; g.fillRect(i % w, (i / w) | 0, 1, 1); } });
+    return {canvas, ax: -minX + pad - 2, ay: -minY + pad};
+  }
+  function box(v, x0, x1, y0, y1, z0, z1, c) { for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) v.push([x, y, z, c]); }
+  function set(v, x, y, z, c) { for (let i = v.length - 1; i >= 0; i--) if (v[i][0] === x && v[i][1] === y && v[i][2] === z) v.splice(i, 1); v.push([x, y, z, c]); }
+  function rotate(v, dir, size) {
+    const s = size - 1;
+    return v.map(([x, y, z, c]) => dir === 0 ? [x, y, z, c] : dir === 1 ? [s - y, x, z, c] : dir === 2 ? [s - x, s - y, z, c] : [y, s - x, z, c]);
+  }
+  const WOOD = "#7a5a42";
+  const MODELS = {
+    tv() { const v = []; box(v, 0, 2, 0, 12, 0, 2, WOOD); box(v, 0, 0, 1, 11, 4, 9, "#26262b"); return v; },
+    reachy() { const v = [], d = "#26262b"; box(v, 0, 1, 0, 1, 0, 1, "#f3f2ec"); box(v, 0, 1, 0, 1, 2, 3, "#e2e0d8"); set(v, 2, 0, 3, d); set(v, 2, 1, 3, d); set(v, 0, 0, 4, d); set(v, 0, 0, 5, d); set(v, 1, 1, 4, d); set(v, 1, 1, 5, d); return v; },
+    nest() { const v = []; box(v, 0, 3, 0, 7, 0, 0, "#3b3f4a"); set(v, 3, 1, 0, "#6fd08a"); set(v, 3, 5, 0, "#6fd08a"); return v; },
+    sofa() { const v = [], f = "#5f7fa6"; box(v, 0, 6, 0, 15, 0, 1, shade(f, -0.2)); box(v, 0, 6, 0, 15, 2, 2, f); box(v, 5, 6, 0, 15, 3, 5, f); box(v, 0, 6, 0, 0, 3, 3, f); box(v, 0, 6, 15, 15, 3, 3, f); return v; },
+    plant() { const v = [], leaf = "#4f9a4a"; box(v, 1, 3, 1, 3, 0, 3, "#b8643c"); box(v, 1, 3, 1, 3, 4, 6, leaf); box(v, 0, 4, 2, 2, 6, 7, leaf); box(v, 2, 2, 0, 4, 7, 8, leaf); box(v, 2, 2, 2, 2, 9, 10, shade(leaf, 0.2)); return v; },
+    table() { const v = []; for (const [x, y] of [[0, 0], [7, 0], [0, 5], [7, 5]]) box(v, x, x, y, y, 0, 3, WOOD); box(v, 0, 7, 0, 5, 4, 4, "#b08355"); return v; },
+    chair() { const v = [], g = "#4f8a5b"; for (const [x, y] of [[0, 0], [2, 0], [0, 2], [2, 2]]) box(v, x, x, y, y, 0, 1, WOOD); box(v, 0, 2, 0, 2, 2, 2, g); box(v, 2, 2, 0, 2, 3, 5, g); return v; },
+    counter() { const v = []; box(v, 0, 14, 0, 3, 0, 5, "#ebe7de"); box(v, 0, 14, 0, 3, 6, 6, "#6e5440"); box(v, 5, 8, 3, 3, 1, 4, "#2e2f33"); box(v, 10, 12, 1, 2, 6, 6, "#9fb3c0"); return v; },
+    bed1() { return bed(13, 16, "#e0a458"); },
+    bed2() { return bed(11, 12, "#e58fa6"); },
+    shower() { const v = []; box(v, 0, 6, 0, 6, 0, 0, "#dfe3e6"); box(v, 0, 6, 6, 6, 1, 7, "#cfe9f5"); return v; },
+    toybox() { const v = []; box(v, 0, 3, 0, 3, 0, 2, "#d9534f"); box(v, 0, 3, 0, 3, 3, 3, "#f2c230"); return v; },
+    tub() { const v = []; box(v, 0, 5, 0, 11, 0, 2, "#f4f4f0"); for (let x = 1; x <= 4; x++) for (let y = 1; y <= 10; y++) set(v, x, y, 2, "#8fc3e0"); return v; },
+    btable() { const v = []; box(v, 1, 1, 1, 1, 0, 2, "#e0e0dc"); box(v, 0, 2, 0, 2, 3, 3, "#f4f4f0"); return v; },
+    pots() { const v = []; for (const y of [0, 3]) { box(v, 0, 1, y, y + 1, 0, 1, "#b8643c"); box(v, 0, 1, y, y + 1, 2, 3, "#4f9a4a"); } return v; },
+    ball() { const v = []; box(v, 0, 1, 0, 1, 0, 1, "#f2c230"); set(v, 0, 0, 1, "#fff3b0"); return v; },
+  };
+  function bed(wx, dy, c) {
+    const v = [];
+    box(v, 0, wx - 1, 0, dy - 1, 0, 0, WOOD); box(v, 0, wx - 1, 0, dy - 1, 1, 2, "#f1efe8");
+    box(v, 0, wx - 1, Math.floor(dy * 0.35), dy - 1, 3, 3, c); box(v, 0, wx - 1, 0, 0, 3, 6, WOOD);
+    box(v, 1, Math.floor(wx / 2) - 1, 1, 2, 3, 3, "#ffffff"); box(v, Math.floor(wx / 2) + 1, wx - 2, 1, 2, 3, 3, "#ffffff");
+    return v;
+  }
+  const spriteCache = {};
+  function sprite(model, fog) {
+    const k = model + (fog ? "|f" : "");
+    return spriteCache[k] || (spriteCache[k] = renderVoxels(MODELS[model](), fog ? (c) => fogHex(c) : null));
+  }
+
+  // kind: fixed (trusted for weeks), furniture (days), toy (hours). walk: blocks the ducks' feet.
+  // bh: how tall it is to eyes: 1 hides the floor behind it from a duck, 2 from Reachy too.
+  const THINGS = [
+    {id: "tv", model: "tv", name: "the TV stand", kind: "fixed", gx: 0.05, gy: 2.2, w: 0.8, d: 3.2, bh: 2, walk: true},
+    {id: "nest", model: "nest", name: "the Nest", kind: "fixed", gx: 1.4, gy: 7.1, w: 1, d: 2, bh: 0, walk: false},
+    {id: "sofa", model: "sofa", name: "the sofa", kind: "fixed", gx: 5.6, gy: 1.8, w: 1.8, d: 4, bh: 2, walk: true},
+    {id: "plant", model: "plant", name: "the big plant", kind: "fixed", gx: 0.1, gy: 0.1, w: 1.2, d: 1.2, bh: 1, walk: true},
+    {id: "table", model: "table", name: "the dining table", kind: "fixed", gx: 2.8, gy: 10.4, w: 2, d: 1.5, bh: 0, walk: false},
+    {id: "chair", model: "chair", name: "the green chair", kind: "furniture", gx: 5.0, gy: 10.8, w: 0.75, d: 0.75, bh: 1, walk: true},
+    {id: "counter", model: "counter", name: "the kitchen counter", kind: "fixed", gx: 8.1, gy: 0.05, w: 3.8, d: 1, bh: 3, walk: true},
+    {id: "bed1", model: "bed1", name: "the big bed", kind: "fixed", gx: 16.3, gy: 0.1, w: 3.25, d: 4, bh: 1, walk: true},
+    {id: "shower", model: "shower", name: "the shower", kind: "fixed", gx: 18.2, gy: 6.2, w: 1.75, d: 1.75, bh: 1, walk: true},
+    {id: "bed2", model: "bed2", name: "the small bed", kind: "fixed", gx: 17.1, gy: 8.1, w: 2.75, d: 3, bh: 1, walk: true},
+    {id: "toybox", model: "toybox", name: "the toy box", kind: "fixed", gx: 12.3, gy: 12.8, w: 1, d: 1, bh: 1, walk: true},
+    {id: "tub", model: "tub", name: "the bathtub", kind: "fixed", gx: 8.1, gy: 11, w: 1.5, d: 3, bh: 1, walk: true},
+    {id: "btable", model: "btable", name: "the balcony table", kind: "fixed", gx: 2.3, gy: 15.3, w: 0.75, d: 0.75, bh: 0, walk: true},
+    {id: "pots", model: "pots", name: "the balcony pots", kind: "fixed", gx: 0.2, gy: 16.5, w: 0.5, d: 1.25, bh: 1, walk: true},
+    {id: "ball", model: "ball", name: "the yellow ball", kind: "toy", gx: 14.2, gy: 11.8, w: 0.5, d: 0.5, bh: 0, walk: false},
+  ];
+  const thing = (id) => THINGS.find((t) => t.id === id);
+  const WALKTHROUGH_POS = {ball: {gx: 3.4, gy: 6.4}};   // where the ball was when you filmed
+  const TAGS = [
+    {gx: 0.1, gy: 8.2}, {gx: 7.9, gy: 11.5}, {gx: 11.9, gy: 3.2}, {gx: 14.5, gy: 7.9}, {gx: 12.1, gy: 2.5},
+    {gx: 17, gy: 7.9}, {gx: 12.1, gy: 9.5}, {gx: 11.9, gy: 11.5}, {gx: 3.5, gy: 14.1},
+  ];
+  const REACHY = {gx: 0.45, gy: 3.8};
+  const HOME = [{gx: 1.9, gy: 7.6}, {gx: 1.9, gy: 8.6}];
+
+  // ── footprints ──────────────────────────────────────────────────────────────
+  const walkBlock = new Uint8Array(NC), blockH = new Uint8Array(NC);
+  function cellsOf(t) {
+    const out = [];
+    for (let fy = Math.floor(t.gy * SUB); fy <= Math.floor((t.gy + t.d) * SUB); fy++)
+      for (let fx = Math.floor(t.gx * SUB); fx <= Math.floor((t.gx + t.w) * SUB); fx++) {
+        const cx = (fx + 0.5) / SUB, cy = (fy + 0.5) / SUB;
+        if (cx > t.gx && cx < t.gx + t.w && cy > t.gy && cy < t.gy + t.d && fx < FX && fy < FY) out.push(fy * FX + fx);
+      }
+    return out.length ? out : [cellAt(t.gx + t.w / 2, t.gy + t.d / 2)];
+  }
+  function footprints() {
+    walkBlock.fill(0); blockH.fill(0);
+    THINGS.forEach((t) => { t.cells = cellsOf(t); t.cells.forEach((c) => { if (t.walk) walkBlock[c] = 1; blockH[c] = Math.max(blockH[c], t.bh); }); });
+  }
+  footprints();
+  const walkable = (c) => floorCell[c] && !walkBlock[c];
+
+  // ── memory ──────────────────────────────────────────────────────────────────
+  const seenAt = new Float64Array(NC), seenBy = new Uint8Array(NC), vis = new Uint8Array(NC), visBy = new Uint8Array(NC), triedAt = new Float64Array(NC);
+  const WHO = ["your walkthrough", "Reachy", "Ah-Ah", "Tee-Tee"];
+  let known = {}, t = 600, rate = 10, exploring = true, seedMode = "walk", tick = 0;
+
+  // ── ducks ───────────────────────────────────────────────────────────────────
+  const LOOKS = [
+    {shell: "#8fd3e3", beak: "#ee6a2a", foot: "#ee6a2a"},
+    {shell: "#c3b1e6", beak: "#f2c94c", foot: "#f2c94c"},
+  ];
+  const ducks = [
+    {name: "Ah-Ah", code: 2, i: 0},
+    {name: "Tee-Tee", code: 3, i: 1},
+  ];
+  function duckModel(look, frame, eye, light) {
+    const v = [], E = "#1b1d1c";
+    if (frame) { set(v, 0, 0, 0, look.foot); set(v, 1, 1, 0, look.foot); } else { set(v, 1, 0, 0, look.foot); set(v, 0, 1, 0, look.foot); }
+    box(v, 0, 1, 0, 1, 1, 2, shade(look.shell, -0.2)); box(v, 0, 1, 0, 1, 3, 4, look.shell);
+    set(v, 2, 0, 3, "#eceeea"); set(v, 2, 1, 3, "#eceeea");
+    set(v, 2, 0, 4, eye ? E : "#eceeea"); set(v, 2, 1, 4, eye ? E : "#eceeea");
+    if (!eye) { set(v, 2, 0, 4, "#eceeea"); set(v, 2, 1, 3, E); set(v, 2, 0, 3, E); }
+    set(v, 3, 0, 3, look.beak); set(v, 3, 1, 3, look.beak);
+    set(v, 0, 1, 5, light);
+    return v;
+  }
+  function duckSprite(d) {
+    const dir = ((Math.round(d.heading / (Math.PI / 2)) % 4) + 4) % 4;
+    const light = d.state === "asleep" ? "#555a60" : (tick >> 2) % 2 ? "#e2474b" : "#4a8fd9";
+    const eye = d.state !== "asleep";
+    const k = [d.i, dir, d.frame, eye, light].join("|");
+    return spriteCache[k] || (spriteCache[k] = renderVoxels(rotate(duckModel(LOOKS[d.i], d.frame, eye, light), dir, 2)));
+  }
+
+  // ── log ─────────────────────────────────────────────────────────────────────
+  const logEl = document.getElementById("log");
+  function clockText(m) { const day = Math.floor(m / 1440) + 1, mm = Math.floor(m % 1440); return `Day ${day} ${String(Math.floor(mm / 60)).padStart(2, "0")}:${String(mm % 60).padStart(2, "0")}`; }
+  function log(text) {
+    const li = document.createElement("li");
+    li.innerHTML = `<time>${clockText(t).replace("Day ", "D")}</time>`;
+    li.appendChild(document.createTextNode(text));
+    logEl.prepend(li);
+    while (logEl.children.length > 40) logEl.lastChild.remove();
+  }
+  function ago(m) {
+    if (m < 1) return "just now";
+    if (m < 60) return Math.round(m) + " min ago";
+    if (m < 1440) return Math.round(m / 60) + " h ago";
+    const d = Math.round(m / 1440); return d + (d === 1 ? " day ago" : " days ago");
+  }
+  const roomName = (z) => ROOMS[z] || "outside";
+  const PHRASE = {L: "the lounge", K: "the kitchen", H: "the hallway", b: "bedroom 1", w: "bathroom 1", s: "bedroom 2", v: "bathroom 2", o: "the balcony"};
+  const phrase = (z) => PHRASE[z] || "outside";
+  // Faster clocks get faster ducks, so a day still has room for a few trips.
+  const pace = () => rate >= 60 ? 3 : rate >= 10 ? 1.6 : 1;
+  const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+
+  // ── reset ───────────────────────────────────────────────────────────────────
+  function reset(mode) {
+    seedMode = mode; t = 600; tick = 0;
+    seenAt.fill(-Infinity); seenBy.fill(0); triedAt.fill(-Infinity); known = {};
+    thing("ball").gx = 14.2; thing("ball").gy = 11.8; thing("chair").gx = 5.0; thing("chair").gy = 10.8;
+    footprints();
+    if (mode === "walk") {
+      const then = t - 3 * 1440;
+      for (let c = 0; c < NC; c++) if (floorCell[c]) { seenAt[c] = then; seenBy[c] = 0; }
+      THINGS.forEach((th) => { const p = WALKTHROUGH_POS[th.id] || th; known[th.id] = {gx: p.gx, gy: p.gy, at: then, by: 0}; });
+    }
+    ducks.forEach((d, i) => Object.assign(d, {gx: HOME[i].gx, gy: HOME[i].gy, heading: 0, battery: i ? 80 : 100, drift: 0,
+      state: "home", path: [], room: null, surveyT: 0, emote: null, emoteT: 0, frame: 0, restT: i ? 20 : 0, said: null, stuckSaid: false}));
+    logEl.innerHTML = "";
+    log(mode === "walk" ? "The map starts from your walkthrough, filmed 3 days ago. All of it is fog until someone looks again."
+                        : "The map starts blind. Only what Reachy and the ducks see will appear.");
+  }
+
+  // ── seeing ──────────────────────────────────────────────────────────────────
+  function castView(ox, oy, heading, half, range, eye, code) {
+    const fx0 = Math.max(0, Math.floor((ox - range) * SUB)), fx1 = Math.min(FX - 1, Math.floor((ox + range) * SUB));
+    const fy0 = Math.max(0, Math.floor((oy - range) * SUB)), fy1 = Math.min(FY - 1, Math.floor((oy + range) * SUB));
+    const otx = Math.floor(ox), oty = Math.floor(oy);
+    for (let fy = fy0; fy <= fy1; fy++) for (let fx = fx0; fx <= fx1; fx++) {
+      const c = fy * FX + fx;
+      if (!floorCell[c]) continue;
+      const dx = (fx + 0.5) / SUB - ox, dy = (fy + 0.5) / SUB - oy, dist = Math.hypot(dx, dy);
+      if (dist > range) continue;
+      if (dist > 0.35) { let da = Math.atan2(dy, dx) - heading; da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) > half) continue; }
+      const n = Math.max(1, Math.ceil(dist / 0.12));
+      let px = otx, py = oty, ok = true;
+      for (let k = 1; k <= n; k++) {
+        const x = ox + dx * k / n, y = oy + dy * k / n, tx = Math.floor(x), ty = Math.floor(y);
+        if (tx !== px || ty !== py) { if (!passTiles(px, py, tx, ty)) { ok = false; break; } px = tx; py = ty; }
+        if (k < n && Math.hypot(x - ox, y - oy) > 0.9) {
+          const cc = Math.floor(y * SUB) * FX + Math.floor(x * SUB);
+          if (cc !== c && blockH[cc] >= eye) { ok = false; break; }
+        }
+      }
+      if (ok) { vis[c] = 1; visBy[c] = code; seenAt[c] = t; seenBy[c] = code; }
+    }
+  }
+  const isQuiet = () => { const m = t % 1440; return m >= 1200 || m < 540; };
+  const isBedtime = () => { const m = t % 1440; return m >= 1185 || m < 540; };
+  const reachyHeading = () => 0.25 + 0.55 * Math.sin(tick / 45);
+
+  function see() {
+    vis.fill(0); visBy.fill(0);
+    ducks.forEach((d) => { if (d.state !== "asleep") castView(d.gx, d.gy, d.heading, 0.8, 3, 1, d.code); });
+    if (!isQuiet()) castView(REACHY.gx, REACHY.gy, reachyHeading(), 0.75, 17, 2, 1);
+    // What's in view updates what's remembered.
+    THINGS.forEach((th) => {
+      const seen = th.cells.find((c) => vis[c]);
+      const k = known[th.id];
+      if (seen !== undefined) {
+        const who = WHO[visBy[seen]];
+        if (th.kind !== "fixed") {
+          if (!k) log(`${who} found ${th.name} in ${phrase(cellZone(th.cells[0]))}.`);
+          else if (Math.hypot(k.gx - th.gx, k.gy - th.gy) > 0.6) {
+            const was = phrase(cellZone(cellAt(k.gx + th.w / 2, k.gy + th.d / 2)));
+            const now = phrase(cellZone(th.cells[0]));
+            log(`${who} noticed ${th.name} has moved${was === now ? " in " + now : `: it was in ${was}, now it's in ${now}`}.`);
+            const d = ducks.find((q) => q.code === visBy[seen]); if (d) emote(d, "bang", 14);
+          }
+        }
+        known[th.id] = {gx: th.gx, gy: th.gy, at: t, by: visBy[seen]};
+      } else if (k && th.kind !== "fixed") {
+        const kc = cellAt(k.gx + th.w / 2, k.gy + th.d / 2);
+        if (vis[kc] && Math.hypot(k.gx - th.gx, k.gy - th.gy) > 0.6) {
+          log(`${WHO[visBy[kc]]}: ${th.name} isn't where it was in ${phrase(cellZone(kc))}. Where did it go?`);
+          const d = ducks.find((q) => q.code === visBy[kc]); if (d) emote(d, "ask", 14);
+          delete known[th.id];
+        }
+      }
+    });
+  }
+
+  // ── planning ────────────────────────────────────────────────────────────────
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  function bfs(start) {
+    const dist = new Int32Array(NC).fill(-1), prev = new Int32Array(NC).fill(-1), q = new Int32Array(NC);
+    let h = 0, tl = 0; dist[start] = 0; q[tl++] = start;
+    while (h < tl) {
+      const c = q[h++], fx = c % FX, fy = (c / FX) | 0;
+      for (const [dx, dy] of DIRS) {
+        const nx = fx + dx, ny = fy + dy;
+        if (nx < 0 || ny < 0 || nx >= FX || ny >= FY) continue;
+        const n = ny * FX + nx;
+        if (dist[n] >= 0 || !walkable(n)) continue;
+        if (((fx >> 1) !== (nx >> 1) || (fy >> 1) !== (ny >> 1)) && !passEdge(fx >> 1, fy >> 1, nx >> 1, ny >> 1)) continue;
+        dist[n] = dist[c] + 1; prev[n] = c; q[tl++] = n;
+      }
+    }
+    return {dist, prev};
+  }
+  function pathTo(prev, start, goal) {
+    const p = []; for (let c = goal; c !== start && c >= 0; c = prev[c]) p.push(c);
+    return p.reverse();
+  }
+  function interest(c) {
+    if (!floorCell[c] || walkBlock[c] || t - triedAt[c] < STALE) return 0;
+    if (seenAt[c] === -Infinity) return 3;
+    return t - seenAt[c] > STALE || seenBy[c] === 0 ? 1 : 0;
+  }
+  function plan(d) {
+    const start = cellAt(d.gx, d.gy), {dist, prev} = bfs(start);
+    const I = new Uint8Array(NC); for (let c = 0; c < NC; c++) I[c] = interest(c);
+    const other = ducks.find((q) => q !== d);
+    let best = -1, bestS = 0;
+    for (let c = 0; c < NC; c++) {
+      if (dist[c] < 0) continue;
+      const fx = c % FX, fy = (c / FX) | 0, g = group(cellZone(c));
+      let v = 0;
+      for (let y = Math.max(0, fy - 3); y <= Math.min(FY - 1, fy + 3); y++)
+        for (let x = Math.max(0, fx - 3); x <= Math.min(FX - 1, fx + 3); x++) {
+          const n = y * FX + x; if (I[n] && group(cellZone(n)) === g) v += I[n];
+        }
+      if (v < 5) continue;
+      let s = v / (dist[c] / 4 + 2);
+      if (other.room && other.state !== "home" && other.state !== "asleep" && group(other.room) === g) s *= 0.25;
+      if (s > bestS) { bestS = s; best = c; }
+    }
+    if (best >= 0) {
+      d.path = pathTo(prev, start, best); d.state = "out"; d.room = cellZone(best);
+      if (d.said !== group(d.room)) { log(`${d.name} sets off to explore ${phrase(d.room)}.`); d.said = group(d.room); }
+      return;
+    }
+    // Nothing reachable is worth a look. Is a closed door hiding something?
+    for (const [key, door] of Object.entries(DOORS)) {
+      if (door.open || !door.id || isQuiet() || t - (door.knockedAt || -1e9) < 180) continue;
+      let behind = 0; for (let c = 0; c < NC; c++) if (cellZone(c) === door.room && floorCell[c] && !walkBlock[c] && (seenAt[c] === -Infinity || t - seenAt[c] > STALE)) behind++;
+      if (behind < 10) continue;
+      const front = doorFront(key, door);
+      if (dist[front] < 0) continue;
+      d.path = pathTo(prev, start, front); d.state = "knock"; d.door = door; d.room = cellZone(front);
+      return;
+    }
+    goHome(d, "fresh");
+  }
+  function doorFront(key, door) {
+    const [kind, rest] = key.split(":"), [X, Y] = rest.split(",").map(Number);
+    if (kind === "v") return zone(X - 1, Y) === door.room ? Y * SUB * FX + X * SUB : Y * SUB * FX + X * SUB - 1;
+    return zone(X, Y - 1) === door.room ? Y * SUB * FX + X * SUB : (Y * SUB - 1) * FX + X * SUB;
+  }
+  function goHome(d, why) {
+    const start = cellAt(d.gx, d.gy), home = cellAt(HOME[d.i].gx, HOME[d.i].gy);
+    if (start === home) { d.state = "home"; d.path = []; if (why === "fresh") { d.restT = 60; } return; }
+    const {dist, prev} = bfs(start);
+    if (dist[home] < 0) {
+      d.state = "stuck"; d.restT = 30;
+      if (!d.stuckSaid) { log(`${d.name} can't get back from ${phrase(cellZone(start))}: a door is closed. Open it and they'll come home.`); d.stuckSaid = true; }
+      emote(d, "ask", 20); return;
+    }
+    d.stuckSaid = false;
+    d.path = pathTo(prev, start, home); d.state = "return"; d.room = null; d.said = null;
+    const why_ = {battery: `battery at ${Math.round(d.battery)}%`, drift: `${d.drift.toFixed(1)} m since it last saw an anchor tag`, bedtime: "bedtime",
+                  fresh: "the map is fresh, nothing left to look at", off: "exploration mode is off", knock: "the door stayed closed"}[why];
+    log(`${d.name} heads back to the Nest (${why_}).`);
+  }
+  function emote(d, kind, ticks) { d.emote = kind; d.emoteT = ticks; }
+
+  function stepDuck(d) {
+    if (d.emoteT > 0 && --d.emoteT === 0) d.emote = null;
+    const bedtime = isBedtime();
+    switch (d.state) {
+      case "home":
+        d.battery = Math.min(100, d.battery + 0.5 * pace()); d.drift = 0; d.heading = 0; d.frame = 0;
+        if (bedtime) { d.state = "asleep"; emote(d, "zzz", 30); break; }
+        if (d.restT > 0) { d.restT -= 1; break; }
+        if (exploring && d.battery >= 85) plan(d);
+        break;
+      case "asleep":
+        d.battery = Math.min(100, d.battery + 0.5);
+        if (!bedtime) { d.state = "home"; d.restT = d.i * 20; }
+        else if (!d.emote && Math.random() < 0.03) emote(d, "zzz", 24);
+        break;
+      case "stuck":
+        if (--d.restT <= 0) { d.restT = 30; goHome(d, "knock"); }
+        break;
+      case "survey":
+        d.heading += 0.35; d.battery -= 0.03; d.frame = 0;
+        if (--d.surveyT <= 0) {
+          // Whatever this spot couldn't reveal isn't worth coming back for until it's stale.
+          const c0 = cellAt(d.gx, d.gy), fx0 = c0 % FX, fy0 = (c0 / FX) | 0;
+          for (let y = Math.max(0, fy0 - 3); y <= Math.min(FY - 1, fy0 + 3); y++)
+            for (let x = Math.max(0, fx0 - 3); x <= Math.min(FX - 1, fx0 + 3); x++) { const n = y * FX + x; if (t - seenAt[n] > 1) triedAt[n] = t; }
+          if (bedtime) goHome(d, "bedtime");
+          else if (!exploring) goHome(d, "off");
+          else if (d.battery < 35) goHome(d, "battery");
+          else if (d.drift > 7) goHome(d, "drift");
+          else plan(d);
+        }
+        break;
+      default: {                         // out, return, knock: walk the path
+        if ((bedtime || !exploring) && d.state !== "return") { goHome(d, bedtime ? "bedtime" : "off"); break; }
+        if (!d.path.length) { arrive(d); break; }
+        const next = d.path[0], nx = ((next % FX) + 0.5) / SUB, ny = (((next / FX) | 0) + 0.5) / SUB;
+        const tx = Math.floor(d.gx), ty = Math.floor(d.gy);
+        if (!walkable(next) || !passTiles(tx, ty, Math.floor(nx), Math.floor(ny))) {
+          if (d.state === "return") goHome(d, "knock"); else plan(d);
+          break;
+        }
+        const dx = nx - d.gx, dy = ny - d.gy, dist = Math.hypot(dx, dy), sp = 0.12 * pace();
+        if (dist > 0.01) d.heading = Math.atan2(dy, dx);
+        if (dist <= sp) { d.gx = nx; d.gy = ny; d.path.shift(); } else { d.gx += dx / dist * sp; d.gy += dy / dist * sp; }
+        d.drift += Math.min(sp, dist) * 0.5; d.battery -= 0.07 * pace(); d.frame = (tick >> 1) % 2;
+      }
+    }
+    // Where Reachy can see a duck, or a duck sees an anchor tag up close, its position is exact again.
+    if (visBy[cellAt(d.gx, d.gy)] === 1) d.drift = 0;
+    for (const tag of TAGS) if (Math.hypot(tag.gx - d.gx, tag.gy - d.gy) < 2.2 && vis[cellAt(tag.gx, tag.gy)] && visBy[cellAt(tag.gx, tag.gy)] === d.code) d.drift = 0;
+    d.battery = Math.max(0, d.battery);
+  }
+  function arrive(d) {
+    if (d.state === "out") { d.state = "survey"; d.surveyT = 18; emote(d, "ask", 10); }
+    else if (d.state === "return") { d.state = "home"; d.heading = 0; d.restT = 10; log(`${d.name} is back at the Nest, charging (${Math.round(d.battery)}%).`); }
+    else if (d.state === "knock") {
+      d.door.knockedAt = t; emote(d, "note", 16);
+      log(`${d.name} knocked on the closed ${d.door.name} door with one soft chirp. It'll check again later.`);
+      goHome(d, "knock");
+    }
+  }
+
+  // ── drawing ─────────────────────────────────────────────────────────────────
+  const container = document.getElementById("map");
+  const canvas = document.createElement("canvas"); canvas.width = W; canvas.height = H;
+  canvas.setAttribute("role", "img"); canvas.setAttribute("aria-label", "An isometric map of the flat with fog of war over what hasn't been seen lately");
+  container.appendChild(canvas);
+  const g = canvas.getContext("2d"); g.imageSmoothingEnabled = false;
+  const img = g.createImageData(W, H);
+  // Precompute every floor pixel's cell and material colour.
+  const pxIndex = [], pxCell = [], pxRGB = [];
+  const hash = (x, y) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 97;
+  function material(z, gx, gy, sx, sy) {
+    const fr = (v) => v - Math.floor(v);
+    if (z === "L" && gx > 2 && gx < 4.8 && gy > 1.9 && gy < 5.7) {
+      const u = (gx - 2) / 2.8, v = (gy - 1.9) / 3.8;
+      if (u < 0.1 || v < 0.07 || u > 0.9 || v > 0.93) return "#b8455a";
+      return (Math.floor(u * 5) + Math.floor(v * 7)) % 2 ? "#e7c16a" : "#d4a64a";
+    }
+    if (z === "L" || z === "H") { if (fr(gy * 4) < 0.1) return z === "H" ? "#9c7147" : "#a97c50"; const c = Math.floor(gy * 4 + Math.floor(gx * 1.3 + gy * 4) * 0.5) % 2 ? "#c99a6a" : "#c08f5f"; return z === "H" ? shade(c, -0.07) : c; }
+    if (z === "K") { if (fr(gx * 2) < 0.07 || fr(gy * 2) < 0.07) return "#b8b09e"; return (Math.floor(gx * 2) + Math.floor(gy * 2)) % 2 ? "#dcd6c8" : "#cdc6b5"; }
+    if (z === "b") return hash(sx, sy) < 9 ? "#a99fc0" : "#b7aecb";
+    if (z === "s") return hash(sx, sy) < 9 ? "#b0c69a" : "#c3d6ae";
+    if (z === "w" || z === "v") { if (fr(gx * 4) < 0.1 || fr(gy * 4) < 0.1) return "#98b6c0"; return (Math.floor(gx * 4) + Math.floor(gy * 4)) % 2 ? "#c2dbe3" : "#b2cfd9"; }
+    if (z === "o") return fr(gx * 3) < 0.13 ? "#7d5c3e" : "#a07a55";
+    return "#000000";
+  }
+  for (let sy = 0; sy < H; sy++) for (let sx = 0; sx < W; sx++) {
+    const a = (sx + 0.5 - OX) / (TW / 2), b = (sy + 0.5 - OY) / (TH / 2), gx = (a + b) / 2, gy = (b - a) / 2;
+    if (gx < 0 || gy < 0 || gx >= GX || gy >= GY) continue;
+    const z = zone(Math.floor(gx), Math.floor(gy));
+    if (z === ".") continue;
+    pxIndex.push(sy * W + sx); pxCell.push(cellAt(gx, gy)); pxRGB.push(hex(material(z, gx, gy, sx, sy)));
+  }
+  // Walls: every tile edge between different rooms, or a room and outside, unless it's an opening.
+  const WALLS = [];
+  for (let y = -1; y <= GY; y++) for (let x = -1; x <= GX; x++) {
+    for (const [bx, by] of [[x + 1, y], [x, y + 1]]) {
+      const za = zone(x, y), zb = zone(bx, by);
+      if (za === "." && zb === ".") continue;
+      if (za !== "." && zb !== "." && group(za) === group(zb)) continue;
+      const key = edgeKey(x, y, bx, by), door = DOORS[key];
+      if (door && door.arch) continue;
+      const v = x !== bx, X = Math.max(x, bx), Y = Math.max(y, by);
+      const glass = (za === "o" || zb === "o") && (za === "." || zb === ".");
+      const back = (v && X === 0) || (!v && Y === 0);
+      const cells = (v ? [[X * 2 - 1, Y * 2], [X * 2 - 1, Y * 2 + 1], [X * 2, Y * 2], [X * 2, Y * 2 + 1]]
+                       : [[X * 2, Y * 2 - 1], [X * 2 + 1, Y * 2 - 1], [X * 2, Y * 2], [X * 2 + 1, Y * 2]])
+        .filter(([fx, fy]) => fx >= 0 && fy >= 0 && fx < FX && fy < FY).map(([fx, fy]) => fy * FX + fx).filter((c) => floorCell[c]);
+      WALLS.push({v, x1: X, y1: Y, x2: v ? X : X + 1, y2: v ? Y + 1 : Y, door, glass, back, cells, depth: v ? X + Y + 0.5 : X + 0.5 + Y});
+    }
+  }
+  function drawWall(w, state, age) {
+    const [x1, y1] = iso(w.x1, w.y1), [x2, y2] = iso(w.x2, w.y2);
+    let h = w.back ? 18 : 7, col = w.v ? "#efe6d4" : "#e0d3ba", cap = "#f7f1e4";
+    if (w.back) col = w.v ? "#e7d3b0" : "#d4bd97";
+    if (w.door) { if (w.door.open) return; h = 12; col = "#8a5a3a"; cap = "#a8744e"; }
+    if (w.glass) { h = 8; }
+    const fog = state === 1;
+    if (fog) { col = fogHex(col, age); cap = fogHex(cap, age); }
+    const lo = Math.round(Math.min(x1, x2)), hi = Math.round(Math.max(x1, x2));
+    for (let x = lo; x < hi; x++) {
+      const tt = (x + 0.5 - x1) / (x2 - x1), base = Math.round(y1 + tt * (y2 - y1));
+      if (w.glass) {
+        g.fillStyle = fog ? "rgba(120,140,170,0.35)" : "rgba(170,215,240,0.5)"; g.fillRect(x, base - h, 1, h);
+        g.fillStyle = fog ? "#8a93a6" : "#eaf7ff"; g.fillRect(x, base - h - 1, 1, 1);
+        continue;
+      }
+      g.fillStyle = col; g.fillRect(x, base - h, 1, h);
+      g.fillStyle = cap; g.fillRect(x, base - h - 1, 1, 1);
+      g.fillStyle = fog ? "#2a2833" : OUTLINE; g.fillRect(x, base - h - 2, 1, 1);
+    }
+    if (w.door && !fog) { const [mx, my] = iso((w.x1 + w.x2) / 2, (w.y1 + w.y2) / 2); g.fillStyle = "#f2c94c"; g.fillRect(Math.round(mx) + (w.v ? -2 : 2), Math.round(my) - 6, 1, 1); }
+  }
+  function blit(s, gx, gy, lift, alpha) {
+    const [sx, sy] = iso(gx, gy, lift || 0);
+    if (alpha != null && alpha < 1) g.globalAlpha = alpha;
+    g.drawImage(s.canvas, Math.round(sx - s.ax - 2), Math.round(sy - s.ay - 2));
+    g.globalAlpha = 1;
+    return [sx, sy];
+  }
+  function shadow(gx, gy, w) {
+    const [sx, sy] = iso(gx, gy); g.fillStyle = "rgba(20,16,30,0.28)";
+    [w - 2, w, w - 2].forEach((rw, r) => g.fillRect(Math.round(sx - rw / 2), Math.round(sy - 1 + r), rw, 1));
+  }
+  const ICONS = {
+    zzz: {fill: "#2d4f7c", d: "M0 0h4v1h-4zM2 1h1v1h-1zM1 2h1v1h-1zM0 3h4v1h-4zM4 4h3v1h-3zM5 5h1v1h-1zM4 6h3v1h-3z"},
+    bang: {fill: "#1e2421", d: "M1 0h1v1h-1zM1 1h1v1h-1zM1 2h1v1h-1zM1 3h1v1h-1zM1 5h1v1h-1z"},
+    ask: {fill: "#1e2421", d: "M1 0h3v1h-3zM0 1h1v1h-1zM4 1h1v1h-1zM3 2h1v1h-1zM2 3h1v1h-1zM2 5h1v1h-1z"},
+    note: {fill: "#1e2421", d: "M2 0h4v1h-4zM2 1h1v1h-1zM5 1h1v1h-1zM2 2h1v1h-1zM5 2h1v1h-1zM1 3h2v1h-2zM4 3h2v1h-2zM0 4h3v1h-3zM4 4h2v1h-2zM0 5h2v1h-2z"},
+  };
+  const bubbles = {};
+  function bubble(kind) {
+    if (bubbles[kind]) return bubbles[kind];
+    const ic = ICONS[kind], cells = [...ic.d.matchAll(/M(\d+) (\d+)h(\d+)/g)].map((m) => [+m[1], +m[2], +m[3]]);
+    const iw = Math.max(...cells.map(([x, , l]) => x + l)), ih = Math.max(...cells.map(([, y]) => y)) + 1, w = iw + 6, h = ih + 7;
+    const c = document.createElement("canvas"); c.width = w; c.height = h; const b = c.getContext("2d");
+    b.fillStyle = OUTLINE; b.fillRect(1, 0, w - 2, h - 3); b.fillRect(0, 1, w, h - 5);
+    b.fillStyle = "#fff"; b.fillRect(1, 1, w - 2, h - 5); b.fillRect(2, 1, w - 4, h - 4);
+    b.fillStyle = OUTLINE; b.fillRect((w >> 1) - 1, h - 3, 3, 1); b.fillRect(w >> 1, h - 2, 1, 1);
+    b.fillStyle = "#fff"; b.fillRect(w >> 1, h - 3, 1, 1);
+    b.fillStyle = ic.fill; cells.forEach(([x, y, l]) => b.fillRect(3 + x, 2 + y, l, 1));
+    return (bubbles[kind] = c);
+  }
+
+  function draw() {
+    const night = isQuiet();
+    // floor
+    const data = img.data, bg = hex(night ? "#1c2233" : "#e9e2d2");
+    for (let i = 0; i < W * H; i++) { data[i * 4] = bg[0]; data[i * 4 + 1] = bg[1]; data[i * 4 + 2] = bg[2]; data[i * 4 + 3] = 255; }
+    for (let k = 0; k < pxIndex.length; k++) {
+      const p = pxIndex[k] * 4, c = pxCell[k], [r, gg, b] = pxRGB[k];
+      let o;
+      if (vis[c]) o = [r, gg, b];
+      else if (seenAt[c] === -Infinity) o = (pxIndex[k] % 37 === 0) ? [36, 32, 46] : [23, 21, 31];
+      else o = fogRGB(r, gg, b, t - seenAt[c]);
+      data[p] = o[0]; data[p + 1] = o[1]; data[p + 2] = o[2];
+    }
+    g.putImageData(img, 0, 0);
+    // walls, things and ducks, back to front
+    const items = [];
+    WALLS.forEach((w) => {
+      let state = 0, newest = -Infinity;
+      for (const c of w.cells) { if (vis[c]) state = 2; if (seenAt[c] > newest) newest = seenAt[c]; }
+      if (state === 0 && newest > -Infinity) state = 1;
+      if (state === 0) return;
+      items.push({depth: w.depth, draw: () => drawWall(w, state, t - newest)});
+    });
+    THINGS.forEach((th) => {
+      const inView = th.cells.some((c) => vis[c]), k = known[th.id];
+      let gx = th.gx, gy = th.gy, fog = false, alpha = 1;
+      if (!inView) {
+        if (!k) return;
+        gx = k.gx; gy = k.gy; fog = true;
+        const age = t - k.at;
+        if (th.kind === "toy") alpha = Math.max(0.3, 1 - age / 360);
+        if (th.kind === "furniture") alpha = Math.max(0.5, 1 - age / (3 * 1440));
+      }
+      items.push({depth: gx + th.w / 2 + gy + th.d / 2, draw: () => {
+        if (th.id === "ball" || th.id === "chair") shadow(gx + th.w / 2, gy + th.d / 2, th.id === "ball" ? 5 : 8);
+        blit(sprite(th.model, fog), gx, gy, 0, alpha);
+        if (th.id === "tv") blit(sprite("reachy", fog && night), REACHY.gx - 0.25, REACHY.gy - 0.25, 6);
+      }});
+    });
+    TAGS.forEach((tag) => {
+      const c = cellAt(tag.gx, tag.gy);
+      if (seenAt[c] === -Infinity) return;
+      items.push({depth: tag.gx + tag.gy + 0.05, draw: () => {
+        const [sx, sy] = iso(tag.gx, tag.gy, 5), x = Math.round(sx) - 1, y = Math.round(sy) - 1;
+        g.fillStyle = OUTLINE; g.fillRect(x - 1, y - 1, 5, 5); g.fillStyle = vis[c] ? "#ffffff" : "#9a98a6"; g.fillRect(x, y, 3, 3); g.fillStyle = OUTLINE; g.fillRect(x + 1, y + 1, 1, 1);
+      }});
+    });
+    ducks.forEach((d) => {
+      items.push({depth: d.gx + d.gy + 0.1, draw: () => {
+        shadow(d.gx, d.gy, 7);
+        const [sx, sy] = blit(duckSprite(d), d.gx - 0.25, d.gy - 0.25);
+        if (d.emote) { const b = bubble(d.emote); g.drawImage(b, Math.round(sx - b.width / 2), Math.round(sy - 14 - b.height)); }
+      }});
+    });
+    items.sort((a, b) => a.depth - b.depth).forEach((it) => it.draw());
+    if (night) { g.fillStyle = "rgba(20,26,60,0.3)"; g.fillRect(0, 0, W, H); }
+  }
+
+  // ── the panel ───────────────────────────────────────────────────────────────
+  const ducksEl = document.getElementById("ducks");
+  ducks.forEach((d) => {
+    const el = document.createElement("div"); el.className = "duck";
+    el.innerHTML = `<b>${d.name}</b><span class="now"></span><div class="meter"><i></i></div><span class="small"></span>`;
+    ducksEl.appendChild(el); d.el = el;
+  });
+  function describe(d) {
+    const r = d.room ? phrase(d.room) : "";
+    return {home: d.restT > 0 && d.battery >= 85 ? "At the Nest, resting before the next trip." : exploring ? "At the Nest, charging for the next trip." : "At the Nest. Exploration mode is off.",
+            asleep: "Asleep at the Nest for quiet hours.",
+            out: `Walking to ${r} to look around.`, survey: `Scout pose in ${r}: stopped, turning its head, taking snapshots.`,
+            return: "Walking home to the Nest.", knock: `Going to knock on the ${d.door ? d.door.name : ""} door.`,
+            stuck: "Shut in behind a closed door, waiting."}[d.state] || "";
+  }
+  const ORDER = ["L", "K", "H", "b", "w", "s", "v", "o"];
+  const roomCells = {}; ORDER.forEach((z) => roomCells[z] = []);
+  for (let c = 0; c < NC; c++) if (floorCell[c]) roomCells[cellZone(c)].push(c);
+  function panel() {
+    const clk = document.getElementById("clock");
+    clk.textContent = clockText(t).toUpperCase() + (isQuiet() ? " QUIET" : "");
+    clk.classList.toggle("night", isQuiet());
+    ducks.forEach((d) => {
+      d.el.querySelector(".now").textContent = describe(d);
+      const m = d.el.querySelector(".meter"); m.classList.toggle("low", d.battery < 35); m.querySelector("i").style.width = d.battery.toFixed(0) + "%";
+      d.el.querySelector(".small").textContent = `Battery ${Math.round(d.battery)}% · ${d.drift < 0.05 ? "position exact" : d.drift.toFixed(1) + " m since an anchor"}`;
+    });
+    let total = 0, robot = 0, fresh = 0;
+    const rows = ORDER.map((z) => {
+      const cells = roomCells[z].filter((c) => !walkBlock[c]);
+      let r = 0, newest = -Infinity;
+      cells.forEach((c) => { if (seenBy[c] && seenAt[c] > -Infinity) { r++; if (seenAt[c] > newest) newest = seenAt[c]; } if (t - seenAt[c] < STALE && seenBy[c]) fresh++; });
+      total += cells.length; robot += r;
+      const door = Object.values(DOORS).find((dd) => dd.room === z && dd.id && !dd.open);
+      const inView = cells.some((c) => vis[c]);
+      return `<tr><td>${ROOMS[z]}${door ? " <span class='small'>(door closed)</span>" : ""}</td><td>${Math.round(100 * r / cells.length)}%</td><td>${inView ? "now" : newest > -Infinity ? ago(t - newest) : "never"}</td></tr>`;
+    });
+    document.getElementById("rooms").innerHTML = rows.join("");
+    document.getElementById("coverage").textContent = `Seen by Reachy or the ducks: ${Math.round(100 * robot / total)}% of the floor. Seen in the last 12 hours: ${Math.round(100 * fresh / total)}%.`;
+  }
+
+  // ── controls ────────────────────────────────────────────────────────────────
+  document.querySelectorAll(".speed").forEach((b) => b.addEventListener("click", () => {
+    rate = +b.dataset.rate; document.querySelectorAll(".speed").forEach((q) => q.setAttribute("aria-pressed", String(q === b)));
+  }));
+  document.getElementById("skip").addEventListener("click", () => {
+    const m = t % 1440, add = m < 540 ? 540 - m : 1440 - m + 540; t += add;
+    log("Skipped ahead to 9:00. Quiet hours are over.");
+  });
+  document.querySelectorAll(".seed").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll(".seed").forEach((q) => q.setAttribute("aria-pressed", String(q === b)));
+    reset(b.dataset.seed);
+  }));
+  const exploreBtn = document.getElementById("explore");
+  exploreBtn.addEventListener("click", () => {
+    exploring = !exploring; exploreBtn.setAttribute("aria-pressed", String(exploring));
+    exploreBtn.textContent = exploring ? "Exploration mode on" : "Exploration mode off";
+  });
+  document.querySelectorAll(".door").forEach((b) => b.addEventListener("click", () => {
+    const [, door] = doorById(b.dataset.door);
+    door.open = !door.open;
+    b.setAttribute("aria-pressed", String(!door.open));
+    b.textContent = (door.open ? "Close " : "Open ") + door.name;
+    log(`You ${door.open ? "opened" : "closed"} the ${door.name} door.`);
+  }));
+  function randomSpot(w, d, avoid) {
+    for (let k = 0; k < 400; k++) {
+      const gx = 0.3 + Math.random() * (GX - 1), gy = 0.3 + Math.random() * (GY - 1);
+      const probe = {gx, gy, w, d}, cells = cellsOf(probe);
+      if (cells.every((c) => walkable(c)) && !avoid.includes(group(cellZone(cells[0]))) &&
+          ducks.every((q) => Math.hypot(q.gx - gx, q.gy - gy) > 1)) return {gx, gy};
+    }
+    return null;
+  }
+  document.getElementById("move-chair").addEventListener("click", () => {
+    const ch = thing("chair"), was = group(cellZone(ch.cells[0]));
+    ch.walk = false; footprints();
+    const p = randomSpot(ch.w, ch.d, ["w", "v", "o", "H"]);
+    ch.walk = true;
+    if (p) { ch.gx = p.gx; ch.gy = p.gy; }
+    footprints();
+    log(`You moved the green chair${p && group(cellZone(ch.cells[0])) !== was ? " to " + phrase(cellZone(ch.cells[0])) : ""}. The map still shows it where it was until someone looks.`);
+  });
+  document.getElementById("throw-ball").addEventListener("click", () => {
+    const b = thing("ball"), was = group(cellZone(b.cells[0]));
+    const p = randomSpot(b.w, b.d, [was]);
+    if (p) { b.gx = p.gx; b.gy = p.gy; footprints(); }
+    log("You hid the yellow ball somewhere else. The map still shows where it was last seen.");
+  });
+  canvas.addEventListener("click", (e) => {
+    const r = canvas.getBoundingClientRect(), sx = (e.clientX - r.left) * W / r.width, sy = (e.clientY - r.top) * H / r.height;
+    const a = (sx - OX) / (TW / 2), b = (sy - OY) / (TH / 2), gx = (a + b) / 2, gy = (b - a) / 2;
+    const info = document.getElementById("info");
+    const z = zone(Math.floor(gx), Math.floor(gy));
+    if (z === ".") { info.textContent = "Outside the flat."; return; }
+    const c = cellAt(gx, gy);
+    const here = THINGS.filter((th) => { const k = known[th.id]; return k && Math.hypot(k.gx + th.w / 2 - gx, k.gy + th.d / 2 - gy) < Math.max(th.w, th.d) / 2 + 0.4; }).map((th) => th.name);
+    let s;
+    if (vis[c]) s = `in view right now (${WHO[visBy[c]]})`;
+    else if (seenAt[c] === -Infinity) s = "never seen";
+    else if (seenBy[c] === 0) s = `only known from your walkthrough, ${ago(t - seenAt[c])}`;
+    else s = `last seen ${ago(t - seenAt[c])} by ${WHO[seenBy[c]]}`;
+    info.textContent = `${ROOMS[z]}: ${s}.${here.length ? " Remembered here: " + here.join(", ") + "." : ""}`;
+  });
+
+  // ── run ─────────────────────────────────────────────────────────────────────
+  reset("walk");
+  let wasQuiet = isQuiet();
+  function loop() {
+    tick += 1;
+    t += rate * 0.17;
+    const q = isQuiet();
+    if (q !== wasQuiet) { log(q ? "8 pm: quiet hours. Reachy sleeps, and the fog starts to creep back." : "9 am: good morning. Reachy wakes and the lounge clears."); wasQuiet = q; }
+    see();
+    ducks.forEach(stepDuck);
+    draw();
+    if (tick % 3 === 0) panel();
+  }
+  panel(); draw();
+  setInterval(loop, 170);
+})();
+</script>
