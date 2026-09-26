@@ -1,6 +1,7 @@
 """Devices switched off at night, and routines that don't break because of it."""
 
 import asyncio
+import time
 from datetime import datetime, time as dtime, timedelta
 
 from nest.app import Nest
@@ -128,9 +129,15 @@ def test_a_night_with_everything_switched_off(tmp_path):
             # 10:15 — Ah-Ah is switched on late and gets its own good morning, once.
             clock["t"] = datetime(2026, 9, 27, 10, 15)
             world.ducks["ah-ah"].sounds.clear()
+            switched_on = time.time()
             world.power("ah-ah", True)
             assert await settle(lambda: "greet" in world.ducks["ah-ah"].sounds)
-            assert world.ducks["ah-ah"].sounds.count("greet") == 1
+            # One good morning. (Counting "greet" sounds isn't the same thing: a duck that has
+            # just switched on may also greet its friend if it can see it, which is fine.)
+            await asyncio.sleep(1.0)
+            mornings = [e for e in nest.feed if e["who"] == "ah-ah" and e["at"] >= switched_on
+                        and "good morning" in e["text"]]
+            assert len(mornings) == 1, mornings
 
             # Every loop is still alive after the whole night.
             assert not any(task.done() for task in nest._tasks)
