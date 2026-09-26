@@ -1,12 +1,25 @@
 # Pollen Robotics: Microduck Olares Integration
 
-Two [Microducks](https://github.com/pollen-robotics/microduck) and one
-[Olares](https://github.com/beclab/olares) box, turned into a pair of curious, tamagotchi-like
-creatures that live in your home, remember you, and grow over time.
+Two [Microducks](https://github.com/pollen-robotics/microduck), **Ah-Ah** and **Tee-Tee**, one
+[Olares](https://github.com/beclab/olares) box and one Jetson Nano. Together they make a pair of
+curious, tamagotchi-like creatures that live in your home, remember you, find things, and tell
+each other about them.
 
-> **The premise in one line:** the duck keeps its reflexes, and Olares gives it a soul. The
-> 50 Hz body stays on the robot. Memory, mood, dreams, learning and gossip live on hardware you
-> own, and nothing leaves the house.
+> **The premise in one line:** the duck keeps its reflexes, and your home network gives it a
+> soul. The 50 Hz body stays on the robot. Memory, mood, speech, learning and gossip live on
+> hardware you own. **Everything stays on the local network.**
+
+Ground rules for this project:
+
+1. **The robot's own software has the final say on movement.** Anything off-board proposes
+   intent. The duck's controller and its safety checks decide how to move, or whether to.
+2. **LAN only.** No cloud rendezvous, no relay, no hosted models. If the internet goes down,
+   nothing about Ah-Ah and Tee-Tee changes.
+3. **No simulated age or handicaps.** They always move with the best gait available and at full
+   speed. They grow in **knowledge and skills**, never by walking worse. The aim is for them to
+   get faster, eventually learning to run.
+4. **Quiet at night.** The loud machine can sleep. The always-on work runs on something
+   silent.
 
 ---
 
@@ -16,266 +29,383 @@ creatures that live in your home, remember you, and grow over time.
 
 A 25 cm, 800 g biped with an RK3566 (Radxa Zero 3) and a 0.8 TOPS NPU. It runs Rust daemons
 that talk one **JSON-RPC** contract, the same calls whether they come from `robotctl`, the phone
-app, a gamepad or your own script. These are the parts that matter for a pet:
+app, a gamepad or your own script.
 
 | Sense / act | How you reach it | Pet use |
 |---|---|---|
-| Camera | WebRTC H.264 (`:8443` signalling), PNG snapshot `GET http://<duck>:8080/frame` | eyes for the VLM on Olares |
+| Camera | WebRTC H.264 (`:8443` signalling), PNG snapshot `GET http://<duck>:8080/frame` | eyes for the vision model |
 | 8×8 ToF depth + hand tracker | `tof.frame`, `tof.stream` | "a hand is near me", obstacles |
 | Petting detector (mic, on-board CNN) | `pet-detect`, runs inside `robotd` and coos | affection meter |
-| Duck detector (NPU, finds *other Microducks*) | `[duck_detector] enabled` | the two ducks can **see each other** |
-| BLE chorale beacon: stable duck id, RSSI, ~245 spare bytes | `chorale.heard`, `chorale.beacon` | who's nearby, how close, duck-to-duck notes |
+| Duck detector (NPU, finds *other Microducks*) | `[duck_detector] enabled` | Ah-Ah and Tee-Tee can **see each other** |
+| BLE chorale beacon: stable duck id, RSSI, ~245 spare bytes | `chorale.heard`, `chorale.beacon` | who's nearby, how close, a radio "voice" between ducks |
 | Voice synth with a **per-robot personality seed** | `robot.sound` with tags `chirp greet coo inquire peck tock alarm wheee` | each duck sounds like a different creature |
-| Gaze, head, mouth | `robot.look` (point in space), `robot.head`, `robot.mouth` | attention, curiosity, expressions |
-| Skills (ONNX policies) | `robot.do`, `robotctl policy add <hf-repo>` | walk, sit, kick, roulade, ground-pick, get up, plus anything you train |
-| Locomotion | `robot.move`, `robot.mode` (walk vs roller) | wandering, following |
-| State and battery | `robot.state` (battery, thermals, loop health), `robot.subscribe` | hunger and tiredness |
+| Gaze, head, mouth | `robot.look` (point in space), `robot.head`, `robot.mouth` | attention, curiosity, lip-sync |
+| Skills (ONNX policies) | `robot.do`, `robotctl policy add/load` | walk, sit, kick, roulade, ground-pick, get up, plus anything you train |
+| Locomotion | `robot.move`, `robot.mode` (walk vs roller) | wandering, following, fetching |
+| Odometry (legs + IMU) | `odometry` crate, fed to `robotd` | short-range "where did I walk" |
+| State and battery | `robot.state` (battery, thermals, loop health), `robot.subscribe` | tiredness, self-monitoring |
 
-Two things from the repo's own notes shape the plan:
+Things from the repo that shape the plan:
 
 - **The on-robot "brain" isn't ported yet.** `docs/ideas/autonomous_behavior.md` lists a
-  16-state machine (Chill, LookAround, Wander, Zoomies, Startle, Nap, Preen, Sneeze, Dance,
-  BallPlay, Petted…) with an energy/mood model that exists in the old runtime but not in the
-  current daemons. That gap is exactly where Olares fits: build the mind off-board first, and
-  move the fast parts on-board later.
-- The same file already has social ideas like recognition, greetings, loneliness, Marco Polo,
-  follow-the-leader and telephone. With two ducks you can build all of them.
-
-### Olares (what it brings)
-
-A self-hosted personal cloud on Kubernetes, with GPU pooling, one-click apps from Olares Market
-(local LLMs, image generation, home automation, workflow tools), Files and backups, private
-networking via Headscale/Tailscale and the LarePass app, and HTTPS entrances for apps you host
-yourself. In short, it gives you a GPU, a database, a place to keep memories, and a phone app,
-all local.
+  16-state machine (Chill, LookAround, Wander, Zoomies, Nap, Dance, BallPlay, Petted…) with an
+  energy/mood model that isn't in the current daemons. We build the mind off-board first, and it
+  can move on-board later.
+- **Odometry drifts, and its origin is "wherever the duck faced at boot"** (no magnetometer).
+  So a duck can't reliably say "the ball is at x=2.3, y=1.1". It *can* say "behind the green
+  chair near the sofa". Landmark-relative memory isn't just charming, it's the representation
+  that actually works here (§5).
+- **The duck can only play its built-in voice tags today.** `robot.sound` takes a tag and
+  nothing else, so arbitrary audio or speech isn't possible yet. The live synth that powers the
+  theremin (`sounds::Stream`, with pitch/vowel/level at runtime) already exists, though, and
+  exposing it over RPC is the natural upstream addition for speech (§6).
+- **The mic is owned by `robotd`'s petting worker** (`arecord` on the codec), so a second
+  listener needs the capture shared (ALSA `dsnoop`) or a separate mic (§6).
 
 ---
 
-## 2. Architecture: body, spine, soul
+## 2. Hardware: who does what
+
+### Olares, the daytime brain
+
+The Olares box has the GPU, storage, databases and the phone app via LarePass. It handles the
+**heavy, occasional** work: the bigger vision model, the language model for diaries and
+conversation, image generation, policy training, and long-term memory.
+
+**Keeping it quiet at night:**
+
+- **Noctua fans help.** An NF-A12x25 / NF-A14 set on a sensible fan curve makes an idle box
+  close to silent. The real noise source is usually the **GPU under load**, so also:
+- **Cap the GPU power** (`nvidia-smi -pl <watts>`) to around 60–70% of stock. You lose a small
+  share of speed for a large drop in heat and fan noise.
+- **Schedule the heavy work for when nobody's home.** Home Assistant (in Olares Market) knows
+  when your phones leave, so start training then, not at 3 a.m. At night Olares just idles.
+- **The ducks don't need Olares at night.** They're asleep, and the Jetson keeps watch.
+
+### The Jetson Nano, the always-on spine
+
+It's a good fit: silent or near-silent, about 5–15 W, and it can sit on a shelf all the time.
+Its job is **everything that must always run, but lightly**:
+
+- the **spine**: the needs/mood simulation and behavior picker for both ducks, at ~1 Hz;
+- the **message bus** between the ducks (§6) and the shared landmark map (§5);
+- **speech in and out**: wake word, speech-to-text (whisper.cpp), text-to-speech (Piper);
+- an optional **room camera** running a detector, so both ducks share one view of the room (§5);
+- **safety supervision**: watching `robot.state` for falls, thermals and battery, and
+  telling a duck to rest.
+
+Which Jetson you have matters:
+
+| | Original Jetson Nano (4 GB, 2019) | Jetson Orin Nano (8 GB) |
+|---|---|---|
+| Software | JetPack 4.x, Ubuntu 18.04, old CUDA. **Use Docker images** to get modern Python | JetPack 6, Ubuntu 22.04 |
+| Spine, bus, map, supervision | Easily | Easily |
+| Wake word + whisper.cpp `tiny`/`base` | Yes (base is a little slow) | Yes, `small` too |
+| Piper TTS | Yes | Yes |
+| Room-camera detector | Small YOLO at a few fps | Comfortably |
+| Local LLM | Not really (tiny models, a few tokens/s) | 3B-class models and small VLMs work |
+
+Run the Jetson as a **plain Docker host on the LAN**, not as an Olares node. The original Nano
+doesn't meet Olares's minimums (8 GB RAM, 150 GB SSD, Ubuntu 22.04+), and keeping it separate
+means it keeps running when Olares is off or rebooting. The Jetson calls Olares's model endpoints
+over the LAN when Olares is awake, and **degrades gracefully** when it isn't: the ducks keep
+their needs, moods, map and duck-to-duck messages, and only lose the big-model extras
+(rich diaries, new captions) until morning.
+
+---
+
+## 3. Architecture
 
 ```
-                ┌──────────────────────── Olares (home server, GPU) ─────────────────────────┐
-                │                                                                             │
-                │   ┌──────────── "Pond" service (your app, one Deployment) ─────────────┐   │
-                │   │  duck-agent: Pip   duck-agent: Wren   ← one mind per duck           │   │
-                │   │     │ needs/mood tick (1 Hz)  │ memory  │ relationship graph          │   │
-                │   └─────┼─────────────────────────┼─────────┼──────────────────────────────┘   │
-                │         ▼                         ▼         ▼                                 │
-                │   local VLM/LLM (Ollama)    Postgres/Redis   Files: diary, photo album        │
-                │   image gen (ComfyUI)       vector memory    Home Assistant (presence, time)  │
-                │   microduck_rl on GPU (MuJoCo + PPO) → "dreams" that become new skills       │
-                └────────────────────────────▲──────────────────────────────▲──────────────────┘
-                           JSON-RPC (WebRTC control lane) + /frame snapshots, LAN only
-                                             │                              │
-                ┌─────────── Duck "Pip" ─────┴───┐            ┌────────── Duck "Wren" ───┴────┐
-                │ robotd 50 Hz · pet-detect ·    │◄── BLE ───►│ robotd 50 Hz · pet-detect ·    │
-                │ tofd · duck-detect · voice     │ beacon+RSSI│ tofd · duck-detect · voice     │
-                └────────────────────────────────┘            └────────────────────────────────┘
+┌──────────── Olares (daytime, heavy, can sleep) ─────────────┐
+│ VLM captions · LLM diaries & conversation · image gen        │
+│ microduck_rl training on GPU · long-term memory (Postgres,   │
+│ vectors, Files) · "Pond" dashboard via LarePass (LAN/VPN)     │
+└──────────────────────────────▲───────────────────────────────┘
+                               │ LAN HTTP, only when awake
+┌─────────────── Jetson Nano (always on, silent) ──────────────┐
+│ spine: needs/mood, behavior picker for Ah-Ah & Tee-Tee        │
+│ duck bus: messages between ducks, "earshot" rules            │
+│ landmark map · speech (wake word, whisper.cpp, Piper)         │
+│ safety supervisor · optional room camera + mic                │
+└────────▲──────────────────────────────────────────▲──────────┘
+         │ JSON-RPC (WebRTC control lane) + /frame    │
+┌────────┴────── Ah-Ah ──────┐   BLE beacon   ┌───────┴──── Tee-Tee ─────┐
+│ robotd 50 Hz · safety ·    │◄──── RSSI ────►│ robotd 50 Hz · safety ·   │
+│ pet-detect · tofd ·        │  spare bytes   │ pet-detect · tofd ·       │
+│ duck-detect · voice        │                │ duck-detect · voice       │
+└────────────────────────────┘                └───────────────────────────┘
 ```
 
 **Three speeds, three places:**
 
-1. **Reflexes (on the duck, milliseconds).** Balance, get-up, petting coo, obstacle stop.
-   These never wait on the network.
-2. **Spine (on Olares, ~1 Hz).** A needs/mood simulation. It reads `robot.state`,
-   `chorale.heard` and `tof` and picks the next behavior with `robot.do`, `robot.look`,
-   `robot.sound` and `robot.move`. It's cheap, deterministic and works even when the LLM is off.
-3. **Soul (on Olares, every 30 s to a few minutes).** The VLM looks at a snapshot, the LLM
-   writes an inner monologue, updates memory, and nudges the spine's goals ("go investigate the
-   new thing on the rug"). It never drives motors directly. It suggests, and the spine decides.
-
-Why that split matters: an LLM that says "walk forward" at the wrong moment walks the duck off a
-table. Keep the language model in charge of *intent* and let the robot keep charge of its body.
+1. **Reflexes (on the duck, milliseconds).** Balance, get-up, petting coo, obstacle stop. These
+   never wait on the network, and **they always win**.
+2. **Spine (Jetson, ~1 Hz).** Needs and mood pick the next behavior: `robot.do`, `robot.look`,
+   `robot.sound`, `robot.move`. It's cheap and deterministic, and it works with Olares asleep.
+3. **Soul (Olares, every 30 s to a few minutes, daytime).** Vision captions, memory,
+   conversation and diaries. It sets *goals* ("go look behind the green chair"). It never
+   drives motors directly.
 
 ---
 
-## 3. The tamagotchi core
+## 4. The tamagotchi core (no aging, full speed)
 
-A classic tamagotchi has hunger, happiness and discipline. These ducks get needs that come from
-**real sensors**, so looking after them is a physical act, not a button in an app.
+Needs come from **real sensors**, so looking after them is a physical act.
 
-| Need | Rises when | Satisfied by (real, physical) | What you see |
+| Need | Rises when | Satisfied by | What you see |
 |---|---|---|---|
-| **Energy** | walking, playing, low battery in `robot.state` | putting it on the charger, a nap | slower gait, drooping head, yawning `coo`, sits down |
-| **Curiosity / "hunger"** | time since it saw something *new* | **showing it novel things**, letting it explore | `inquire` chirps, looks around, wanders off |
-| **Affection** | time since last petting | scratching its head (`pet-detect`), a hand near its face (ToF) | follows you, `greet` when you walk in |
-| **Social** | time since it saw the other duck | the two ducks meeting (BLE RSSI + duck detector) | calls out when alone, gets giddy on approach |
-| **Play** | long calm periods | rolling it a ball, gamepad play, a game | Zoomies, kicks, roulades |
+| **Energy** | long activity, low battery in `robot.state` | the charger, a nap | yawning `coo`, goes to its spot, sits. It never walks worse |
+| **Curiosity / "hunger"** | time since it saw something *new* | showing it new things, exploring | `inquire` chirps, looks around, wanders |
+| **Affection** | time since last petting | head scratches (`pet-detect`), a hand near its face (ToF) | follows you, `greet` when you walk in |
+| **Social** | time away from the other duck | meeting up (BLE RSSI + duck detector) | calls out, rushes over on approach |
+| **Play** | long calm periods | a ball, a game, the other duck | Zoomies, kicks, roulades, chases |
+
+Tiredness changes **what** a duck wants to do, never **how well** it moves. When it's awake it's
+at full ability.
 
 ### Curiosity is food
 
-This is the key idea: **the ducks eat novelty.**
+The ducks **eat novelty**. Put something in front of Ah-Ah and it looks (`robot.look`), the
+Jetson grabs a `/frame`, and a vision model names it ("a yellow tennis ball"). Something new is
+a full meal: a happy `wheee`, a little dance, and a new entry in Ah-Ah's **Duckdex**, a photo
+album from its own eyes. Something it's seen before is a snack, and the same thing ten times is
+boring. Each duck keeps its **own** Duckdex, which is what makes telling each other about things
+worth doing (§5).
 
-- You "feed" a duck by putting an object in front of it. The duck looks at it (`robot.look`),
-  Olares grabs a `/frame`, and the local VLM names it ("a green ceramic mug with a chipped handle").
-- If it has **never seen it before**, that's a full meal: a happy `wheee`, a little dance, and a
-  new entry in its **Duckdex**, a collection album with the photo taken from the duck's own eyes.
-- A thing it has seen before is a snack. The same thing ten times in a row makes it bored, and it
-  pecks at it and looks away.
-- Rare things are treats: a cat, a plant that has flowered, a new person.
-- Each duck keeps its **own** Duckdex, so they'll know different things (see Gossip in §4).
+### Growing up means learning, not aging
 
-### It grows up
+There are no life stages and no speed caps. Growth is:
 
-Life stages are unlocked by *experience*, not by a timer:
-
-1. **Egg (day 0).** Sits, looks around, chirps. Only reacts to petting and light.
-2. **Hatchling.** Wobbly short walks, stays close, a high-pitched voice.
-3. **Duckling.** Explores rooms, starts the Duckdex, learns your name (from what you tell it in
-   the app).
-4. **Adult.** Full wandering, games with the other duck, opinions about objects.
-5. **Elder.** Knows the house. Tells "stories" (diary summaries) and teaches the younger duck.
-
-On the robot, "growing" means **loading different skills and speed limits**: early stages cap
-`robot.move` speed and load fewer skills, and later stages `robotctl policy add` new ones.
-You'll actually see the gait get more confident.
-
-### No death, just mood
-
-Old tamagotchis ran on guilt. Here, neglect makes a duck **mopey** (head down, quieter, keeps
-to its corner), and it's thrilled when you come back. Nothing dies and nothing is lost for good.
+- **Knowledge.** A bigger Duckdex, a richer map of the home, more words understood (§6), more
+  memories of you.
+- **Skills.** New policies learned in the "dojo" (§7). Tee-Tee learns to trot, Ah-Ah learns to
+  climb onto the rug edge, and later both learn to **run**.
+- **Relationship.** A friendship score between them, and between each of them and you.
 
 ---
 
-## 4. Ideas, roughly by delight per effort
+## 5. "I found a yellow ball, behind the green chair near the sofa"
 
-### Quick wins (a weekend each)
+This is the feature you liked most, so here's how it would work.
 
-- **Greeting at the door.** Home Assistant sees your phone arrive. The Pond wakes the nearer
-  duck, which turns toward the door (`robot.look`), waddles over and does `greet`. Guests get
-  `inquire` instead.
-- **Morning report.** At breakfast, a duck does a little sit/stand bow and the phone gets a
-  message in duck-voice: "Slept 9 hours. Dreamt about the red sock. Wren was being weird."
-- **The window watcher.** One duck parks by a window. Every few minutes the VLM describes the
-  view, and the duck reacts only when something *changes*: a bird, rain starting, a delivery.
-- **Photo album from duck height.** Every Duckdex entry and every "surprise" frame goes to
-  Olares Files, organised by duck and day. It's 25 cm tall, so your home looks like a cathedral.
-- **Personalities from seeds.** Each duck already has a per-robot voice seed. Use the *same*
-  seed to roll temperament traits (bold↔shy, chatty↔quiet, tidy↔chaotic) that bias the spine's
-  choices and flavour the LLM's monologue. One duck will be the explorer and the other the homebody.
+### Each duck builds a landmark map
 
-### The two-duck magic
+A **scene graph** of landmarks and relations, not coordinates:
 
-- **They recognise each other.** BLE gives identity and distance, and the duck detector gives
-  direction. When they meet, they turn to face each other and do a greeting that depends on
-  their **friendship score**, which grows with every good interaction.
-- **Gossip.** When they meet, the Pond lets them "exchange memories": Pip tells Wren about the
-  mug it found. Wren now *wants* to see the mug (its curiosity need targets it) and goes looking.
-  For the romantic version, send it over the ~245 spare BLE bytes instead, so it works even when
-  Olares is down.
-- **Teaching.** When one duck learns a new skill (see Dreams below), the other **can't use it until
-  it has watched** the first one do it. The duck detector confirms it saw Pip do the roulade, and
-  only then does the Pond install the policy on Wren. Wren's first attempt is clumsy on purpose,
-  with a lower speed cap, and gets better.
-- **Rivalry and making up.** Both ducks want the same ball, and one "wins". The loser sulks for
-  ten minutes, and making up is a synchronized head-bob on the shared BLE beat.
-- **Duets.** The repo already has a four-part duck chorale synced over BLE with no shared
-  clock. Make it *spontaneous*: a low chance when both are happy and together, as the repo's own
-  notes suggest ("a surprise duet is a delight, a jukebox is not").
-- **Hide and seek / Marco Polo.** One duck hides (you carry it). The other hunts using BLE RSSI
-  hot/cold, quacking faster as it gets closer, then switches to the camera for the final approach.
-- **Follow the leader, conga line.** RSSI holds the spacing, ToF keeps them from bumping, and the
-  duck detector steers. Put on music and it becomes a parade.
-- **Separation anxiety.** Keep one duck in another room for a day. The other calls out more
-  often, and when they meet again the reunion is big.
+```
+[sofa] ──near── [green chair] ──behind── (yellow ball)   seen by Ah-Ah, 14:32, photo #412
+   │
+  left-of
+   │
+[window] ──under── [radiator]
+```
 
-### Olares-powered superpowers
+- **Landmarks** are big things that don't move: sofa, chairs, table, doorways, radiator.
+  They get learned automatically as they keep showing up in captions from the same area, and
+  you can name them in the Pond ("that's Grandma's chair").
+- **Objects** are things that move: balls, socks, keys, the cat. Each sighting stores the
+  nearest landmarks and the relation the vision model reports (`behind`, `under`, `on`,
+  `next to`), plus the photo and time.
+- **Odometry** fills in the short hops ("about 1 m past the chair, turned left") and resets its
+  drift every time the duck recognises a landmark.
+- **Optional room camera** on the Jetson, high on a shelf. It sees both ducks and the big
+  furniture, which gives a shared, drift-free map. The duck detector model can run on it too.
+  This is the easiest way to make "go to the green chair" reliable.
 
-- **Dreams that teach skills.** At night, while the ducks nap on their chargers, Olares's GPU
-  runs [microduck_rl](https://github.com/pollen-robotics/microduck_rl) (MuJoCo + PPO) on a
-  "dream" chosen from the day: "Wren kept trying to reach the couch cushion, so train a
-  step-up." The Pond validates the new ONNX policy in `scripts/duck-sim` first. If it passes,
-  the duck wakes up with a new trick and a matching diary entry: "I dreamt I could climb." This
-  is the one feature a cloud tamagotchi could never have.
-- **Dream images.** Alongside that, ComfyUI or a Flux model renders a picture of the dream from
-  the day's Duckdex, for the morning report.
-- **Diaries and memory.** Each duck writes a short daily diary in its own voice, from its events
-  plus VLM captions, stored as markdown in Files and embedded into a vector store. Ask a duck
-  "when did you last see my keys?" and it answers from memory, with the photo. It's a genuinely
-  useful pet.
-- **A map of home.** Odometry plus the novelty grid from the old runtime gives each duck a
-  "territory". The Pond draws it: "Pip has explored 63% of the living room. The hallway is
-  unknown and frightening."
-- **Curiosity as surprise.** Keep a caption per spot on the map. When the VLM's description of a
-  familiar place *differs* from memory ("the chair has moved", "there's a box by the door"),
-  that's a surprise, and the duck walks over to investigate. Curiosity comes from prediction
-  error, which is how real curiosity models work.
-- **The Pond dashboard.** A small web app hosted on Olares and reachable from your phone through
-  LarePass. It shows both ducks' needs as little bars, a live camera per duck, the Duckdex, the
-  diaries, the friendship meter, and buttons to "call" a duck or start a game.
-- **Home Assistant hooks.** Ducks huddle together when it rains, get sleepy when the lights dim,
-  and get excited on a calendar birthday. Keep these optional so they stay pets, not
-  notification speakers.
+### Telling the other duck
 
-### Wild ones
+1. Ah-Ah finds the ball. Its caption plus landmark lookup produces a small structured message:
+   `{found: "yellow ball", rel: "behind", landmark: "green chair", near: "sofa", conf: 0.8}`.
+2. If Tee-Tee is **in earshot** (§6), Ah-Ah "says" it: it turns toward Tee-Tee (the duck
+   detector gives the bearing), does an excited chirp phrase, and the message is delivered.
+   The Pond shows the subtitle: *"I found a yellow ball! It's behind the green chair near the
+   sofa."*
+3. Tee-Tee's curiosity now **targets the ball**. It resolves "green chair" in *its own* map,
+   walks there, looks behind it, and either confirms ("found it!", with a Duckdex entry
+   credited "told by Ah-Ah") or reports back ("it's not there anymore", and the memory is
+   marked stale).
+4. If Tee-Tee has never seen the green chair, it asks: an `inquire` chirp, and Ah-Ah leads the
+   way (follow-the-leader).
 
-- **Culture.** Give each duck a small vocabulary of made-up "words", which are short sequences
-  of its voice tags. When the ducks gossip, words spread and mutate, and in a month they share a
-  dialect you didn't design.
-- **Tiny economy.** The Duckdex is worth "shells". Ducks trade knowledge for shells and hoard
-  favourite objects by always going back to look at them.
-- **Seasons.** The personality drifts slowly with experience. A shy duck that gets petted a lot
-  becomes bolder, and one that gets knocked over a lot becomes careful.
-- **Letters.** Once a week each duck "writes" you a letter, generated from its memory and printed
-  or emailed, with a photo it chose itself.
+It also works for you: "Ah-Ah, where's my keys?" gets "Under the coat by the front door, I saw
+them at 9:10", with the photo.
+
+### More games on the same machinery
+
+- **Fetch-by-description.** You say "Tee-Tee, find something red". It searches its map, then
+  goes.
+- **Treasure hunt.** You hide a toy. The first duck to find it tells the other, and they race
+  to it.
+- **Tidy-up scouting.** In the evening, both ducks tour the rooms and report "things out of
+  place" compared with the morning.
+- **Rumours.** Old or second-hand information carries lower confidence, so the ducks can be
+  wrong, go check, and "argue" about who was right.
 
 ---
 
-## 5. Build plan
+## 6. Speech: how Ah-Ah and Tee-Tee talk
+
+There are three different problems. Solving them separately keeps each one simple.
+
+### A. Duck to duck: meaning travels by radio, the voice is the performance
+
+The ducks don't need to hear English. They need to **exchange meaning** and **look like
+they're talking**.
+
+- **Meaning** goes over the Jetson's duck bus on the LAN, or directly in the ~245 spare bytes
+  of the BLE beacon. A message like the ball one compresses to a few dozen bytes using IDs for
+  object, relation and landmark. The BLE path works even if the Jetson is down.
+- **Earshot rule:** a message is delivered **only if the ducks could plausibly hear each
+  other**, meaning BLE RSSI above a threshold and ideally the duck detector seeing the other
+  duck. If Tee-Tee is in another room, it doesn't find out until they meet, so gossip spreads
+  physically, like it would with real animals.
+- **Performance:** the speaker turns toward the listener, plays a chirp phrase whose length and
+  rhythm follow the message, and the listener answers (`inquire` for a question, `greet` or
+  `wheee` for "great!", `peck` for "not interested"). The Pond and your phone show the
+  subtitle.
+
+**Stretch goal: truly acoustic messages.** With raw audio playback on the duck (below), the
+message itself can be sent as sound using a data-over-sound library like
+[ggwave](https://github.com/ggerganov/ggwave), in R2-D2-style chirps that the other duck's mic
+decodes. Then "in earshot" is literally true, and you'd hear them talking. Motor noise and
+room echo make this unreliable, so keep the radio path as the fallback.
+
+### B. Duck to you: "duck-speak" with subtitles
+
+- The language model on Olares (or a small one on an Orin Nano) writes what the duck wants to
+  say, in character.
+- **Duck-speak, not a human voice.** The best way to keep them feeling like ducks is
+  Animal-Crossing-style babble: syllables in the duck's own voice following the rhythm and
+  intonation of the real sentence, with the English as subtitles in the Pond. The duck already
+  has the right engine for this: `sounds::Stream`, the live synth behind the theremin, driven by
+  pitch, vowel and level. It needs one **upstream addition**: an RPC such as `robot.voice` that
+  takes a short pitch/vowel/level contour. Piper TTS on the Jetson gives the phoneme timing to
+  build the contour, and `robot.mouth` moves the beak in sync.
+- **Actual English, if you want it sometimes.** The duck's speaker can't play arbitrary audio
+  today, so for real words either add raw playback upstream (a `robot.play` RPC, or an ALSA
+  path next to the voice), or play Piper's audio from a small speaker near the Jetson or a
+  Home Assistant speaker. A good split: ducks babble, and one "translator" speaker says the
+  English quietly when you ask.
+
+### C. You to the ducks: listening
+
+- **Start with a room mic on the Jetson.** A USB mic array (ReSpeaker-class) with wake words
+  "Ah-Ah" and "Tee-Tee" (openWakeWord), then whisper.cpp for the command. It's far from the
+  motors so it's clean, and it doesn't touch the robot at all. The wake word picks which duck
+  you're talking to, and the landmark map turns "the green chair" into a destination.
+- **Later, the duck's own ears.** The petting worker holds the duck's mic. Sharing it via ALSA
+  `dsnoop` and streaming 16 kHz audio to the Jetson over the LAN lets each duck hear you
+  itself, and makes acoustic duck-to-duck messages possible. Walking is loud, so only listen
+  when the duck is still (turning toward you when it hears its name is a nice cue).
+- **Understanding stays small at first:** names, "come here", "find X", "where's X", "go to
+  sleep", "good duck". The ducks learn more phrases over time as part of growing up in
+  knowledge.
+
+---
+
+## 7. The dojo: learning to move better, and to run
+
+You want them to move freely and as well as possible, and eventually to run. Here's a safe
+path to that.
+
+1. **Always run the best official gait.** `robotctl policy check` / `update` keeps both ducks on
+   Pollen's latest policies. Never cap speed for "personality".
+2. **Train on Olares** with [microduck_rl](https://github.com/pollen-robotics/microduck_rl)
+   (MuJoCo + PPO) on the GPU, while you're out, at a capped power limit. Candidate skills:
+   faster walk, trot, **run**, turning in place, stepping over a threshold, better recovery.
+3. **Test in simulation first.** `scripts/duck-sim` runs the *real daemons* against the
+   simulated body. A new policy has to pass a test battery (flat, carpet friction, pushes,
+   slopes, start/stop) before it ever touches a real duck.
+4. **Self-trials in a test pen.** Once a policy passes in sim, the duck tries it for real in a
+   marked safe area (soft floor, clear ToF, no stairs or table edges), in short bursts. The
+   Jetson records falls, `robot.state` thermals and loop health, and speed achieved from
+   odometry (plus the room camera if you have one). The duck's own get-up and safety handling
+   stays in charge throughout.
+5. **Keep or roll back automatically.** Better and no worse on falls or heat: keep it. Otherwise
+   `robotctl policy reset`, and a diary entry: "Tried running today. Fell twice. Not yet."
+6. **Teach the other one.** When Ah-Ah graduates a skill, Tee-Tee gets it after it has watched
+   Ah-Ah do it (the duck detector confirms). Tee-Tee then goes through its own test-pen trial,
+   since every body is a little different.
+
+Worth being honest about: running is hard for a 25 cm biped. Sim-to-real gaps are real, falls
+wear servos, and "run" may first look like a fast shuffle or a tiny hop. The pen, short bursts,
+and automatic rollback are what make it safe to keep trying.
+
+---
+
+## 8. More ideas for the pair
+
+- **Recognition and friendship.** They face each other and greet in a way that depends on
+  their friendship score, which grows with good interactions.
+- **Personalities from seeds.** Each duck's voice seed also rolls temperament traits (bold↔shy,
+  chatty↔quiet). Maybe Ah-Ah is the explorer and Tee-Tee the one who asks questions.
+- **Spontaneous duets** on the shared BLE beat, rarely and only when both are happy and
+  together.
+- **Follow the leader / conga**, **hide and seek** with BLE hot/cold, **separation anxiety**
+  and big reunions.
+- **A shared dialect.** Their chirp phrases for landmarks and objects drift as they gossip, so
+  in a month they have "words" you didn't design.
+- **Diaries and letters.** Nightly diary summaries on Olares (in the morning, if Olares slept),
+  plus a weekly letter to you with a photo each duck picked.
+- **Door greeting.** Home Assistant sees your phone on the home Wi-Fi and the nearer duck goes
+  to meet you. LAN presence only, no cloud.
+- **The Pond dashboard** on Olares, reachable from your phone through LarePass: needs bars,
+  live camera, both Duckdexes, the landmark map with "last seen" pins, diaries, and message
+  subtitles between the ducks.
+
+---
+
+## 9. Build plan
 
 **Phase 0: plumbing (one evening)**
-- Name both ducks: `sudo robotctl system set-name pip` and `… wren`. Every board flashed from one
-  image is called `radxa-zero3`, so two ducks on one network will collide otherwise.
-- Put both ducks and Olares on the same LAN. Confirm `http://<duck>:8080/` (console) and
-  `curl http://<duck>:8080/frame -o f.png` from the Olares host.
-- Enable the duck detector (`robotctl configure`, `[duck_detector] enabled`) and chorale
-  consent (`[chorale] accept`) on both.
+- Name them: `sudo robotctl system set-name ah-ah` and `sudo robotctl system set-name tee-tee`.
+  Every board flashed from one image is called `radxa-zero3`, so they'll collide otherwise.
+- Put the ducks, Jetson and Olares on the same LAN. From the Jetson,
+  `curl http://ah-ah.local:8080/frame -o f.png` should work (or use the IP from `duckctl ip`).
+- Enable the duck detector (`[duck_detector] enabled`) and chorale consent (`[chorale] accept`)
+  in `robotctl configure` on both.
+- Noctua fans and a GPU power cap on Olares. Home Assistant from Olares Market for presence.
 
-**Phase 1: a Pond that can poke a duck**
-- One Python service, packaged as an Olares app (Docker image plus an Olares Application Chart).
-- Reuse `spaces/shared/control.py` (`Rpc`, which doesn't care about transport) and open the
-  WebRTC control lane over the LAN signalling at `ws://<duck>:8443` to send JSON-RPC: `robot.subscribe`, `robot.sound`, `robot.look`,
+**Phase 1: Jetson talks to a duck**
+- One Python service in Docker on the Jetson. Reuse `spaces/shared/control.py` (`Rpc`) over the
+  WebRTC control lane via `ws://<duck>:8443`: `robot.subscribe`, `robot.sound`, `robot.look`,
   `robot.do`.
-- Milestone: from your phone, press "call Pip" and Pip turns toward the camera and says `greet`.
+- Milestone: press "call Ah-Ah" in a web page and Ah-Ah turns and `greet`s.
 
 **Phase 2: the spine**
-- A needs/mood tick at 1 Hz per duck, with state in Postgres or Redis. It picks behaviors from a
-  table: needs × personality → weighted choice among {look around, wander, nap, seek other duck,
-  seek human, play}.
-- Milestone: leave them alone for an hour and they do believable things by themselves.
+- Needs/mood tick at 1 Hz per duck on the Jetson, state in SQLite or Redis, and the safety
+  supervisor.
+- Milestone: left alone for an hour, both do believable things, and rest when the battery is low.
 
-**Phase 3: the soul**
-- A local VLM for captions (any small vision model Ollama can serve), a local LLM for the
-  monologue and diary, and a vector memory. Add the Duckdex and "curiosity is food".
-- Milestone: show Pip a new object and it gets excited. Show it again tomorrow and it's
-  a snack.
+**Phase 3: eyes and memory**
+- VLM captions (Olares by day, a small model on the Jetson as a fallback), the Duckdex, and
+  the landmark scene graph. Optionally the room camera.
+- Milestone: show Ah-Ah a ball, move it behind the chair, and ask "where's the ball?"
 
-**Phase 4: two ducks**
-- Friendship graph, greetings, gossip, teaching, spontaneous duets.
+**Phase 4: talking**
+- The duck bus with the earshot rule, chirp-phrase performance and subtitles, then the room mic
+  with wake words and whisper.cpp.
+- Milestone: Ah-Ah finds the yellow ball, tells Tee-Tee, and Tee-Tee goes and finds it.
 
-**Phase 5: dreams**
-- A nightly job: pick a dream, train with microduck_rl on the GPU, validate in `duck-sim`,
-  install with `robotctl policy add`, and write the diary entry.
+**Phase 5: the dojo**
+- Train, validate in `duck-sim`, run test-pen trials, keep or roll back, then teach the other duck.
+- Upstream proposals to Pollen: `robot.voice` (drive the live synth for duck-speak), raw audio
+  playback, a shared mic stream, and the spine itself as the missing autonomous brain.
 
 ---
 
-## 6. Gotchas worth knowing up front
+## 10. Gotchas
 
-- **Keep the LLM off the motors.** It proposes and the spine disposes. Clamp speeds and
-  refuse `robot.move` near edges using ToF.
-- **Stay on the LAN.** Olares and the ducks on the same network means no relay, no metering and
-  no rendezvous. The repo's remote path goes through a Hugging Face–hosted rendezvous with a
-  10 GB/month relay allowance, and a pet that watches all day would burn through it. For remote
-  viewing, go through the Pond via LarePass instead of connecting to the ducks directly.
-- **Snapshots, not streams.** A VLM needs a frame every few seconds, not 30 fps, so
-  `GET /frame` is plenty. Use the WebRTC video only when the dashboard is open.
-- **Microphone audio doesn't leave the robot today.** Petting and sound events are classified
-  on-board. Speech understanding (Whisper on Olares) would need a small audio forwarder on the
-  duck. It's doable, but it's a real change, and worth proposing upstream rather than hacking in.
-- **A new policy can fall over.** Always run a dreamt skill in `scripts/duck-sim` first, and
-  keep `sudo robotctl policy reset` handy.
-- **Social behavior is opt-in.** The repo's rule is "anything social is opt-in, and off means
-  invisible". Keep that for the Pond too.
-- **Upstream opportunity.** The spine (needs, mood, state machine) is exactly the missing
-  "autonomous brain" in the Microduck roadmap. Prototype it in Python on Olares, then offer the
-  design back to Pollen as the port.
+- **Keep the language model off the motors.** It proposes and the duck's own controller
+  decides. Refuse `robot.move` goals toward edges or drops flagged by ToF.
+- **LAN only, and stay off the relay.** The repo's remote path uses a hosted rendezvous with
+  metered relay bandwidth. Talk to the ducks directly on the LAN, and reach the Pond from
+  outside only through LarePass's private VPN.
+- **Snapshots, not streams.** A frame every few seconds is plenty for captions. Use WebRTC video
+  only when the dashboard is open.
+- **Two consumers, one duck.** If the Pond and the phone app both hold a session, check how the
+  duck handles it (`robot.remoteSessionActive`) before assuming both can drive.
+- **Upstream changes are real changes.** Duck-speak, raw playback and a shared mic each need a
+  small addition to the Microduck software. Propose them to Pollen rather than patching the
+  robot image, because the updater replaces anything local on the next release.
