@@ -183,3 +183,63 @@ def test_the_pond_page_and_the_duck_actions(tmp_path):
     assert "fonts.googleapis" not in page.text  # everything is served locally
     font = client.get("/static/fonts/pressstart2p.woff2")
     assert font.status_code == 200 and font.content[:4] == b"wOF2"
+
+
+def test_review_fixes_hold(tmp_path):
+    """Regressions for the self-review: Reachy failures, stale rumours, bed loops, confidence."""
+    from nest.spine.tiredness import Band
+    from nest.world.scene import Memory
+
+    # Newer news of the ball beats an older first-hand sighting.
+    memory = Memory("ah-ah")
+    old = memory.saw("yellow ball", "under", "sofa")
+    old.at -= 86400
+    other = Memory("tee-tee")
+    fresh = other.saw("yellow ball", "behind", "green chair")
+    memory.heard(fresh, "tee-tee")
+    assert memory.where_is("yellow ball").landmark == "green chair"
+
+    async def main():
+        nest = make_nest(tmp_path)
+        await nest.start()
+        try:
+            for _ in range(50):
+                if all(c.connected for c in nest.ducks.values()):
+                    break
+                await asyncio.sleep(0.1)
+
+            async def broken(*args, **kwargs):
+                raise ConnectionError("reachy unplugged")
+
+            # A dead Reachy never blocks bedtime or waking.
+            nest.reachy.goto_sleep = broken
+            nest.reachy.wake_up = broken
+            await nest.bedtime()
+            assert all(m.asleep for m in nest.minds.values())
+            await nest.wake()
+            assert not any(m.asleep for m in nest.minds.values())
+            assert "failed" in nest.reachy_status
+
+            # A very tired duck that is asleep or already in bed doesn't keep re-going to bed.
+            mind = nest.minds["tee-tee"]
+            mind.tiredness.band = Band.VERY_LOW
+            mind.asleep = True
+            assert "go_to_bed" not in mind.weights()
+            mind.asleep, mind.in_bed = False, True
+            assert "go_to_bed" not in mind.weights()
+
+            # The captioner's confidence survives into memory and the message.
+            nest.record_sighting("ah-ah", "keys", "under", "sofa", confidence=0.55)
+            assert nest.minds["ah-ah"].memory.where_is("keys").confidence == 0.55
+            assert abs(nest.bus.pending[-1].message.confidence - 0.55) < 1e-9
+
+            # A rumour is checked at most twice, then dropped.
+            listener = nest.minds["tee-tee"]
+            listener.memory.heard(nest.minds["ah-ah"].memory.where_is("keys"), "ah-ah")
+            assert listener.rumour() is not None
+            listener._checks["keys"] = 2
+            assert listener.rumour() is None
+        finally:
+            await nest.stop()
+
+    asyncio.run(main())

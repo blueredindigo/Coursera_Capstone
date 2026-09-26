@@ -132,7 +132,10 @@ class Memory:
         live = [s for s in self.sightings if s.obj == obj.lower() and not s.stale]
         if not live:
             return None
-        return max(live, key=lambda s: (s.at - (600 if s.told_by else 0)) * s.confidence)
+        # Seconds of age are the currency: hearsay counts as ten minutes older, and each 0.1 of
+        # missing confidence as another minute. Newer news of the ball beats older news.
+        return max(live, key=lambda s: s.at - (600 if s.told_by else 0)
+                   - 600 * (1.0 - s.confidence))
 
     def things_seen(self) -> list[str]:
         return sorted({s.obj for s in self.sightings if not s.stale})

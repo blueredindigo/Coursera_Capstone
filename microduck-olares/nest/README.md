@@ -12,7 +12,7 @@ movement: the Nest proposes, and each duck's controller and safety decide.
 ```bash
 pip install -e ".[dev]"
 python -m nest --sim            # then open http://localhost:8090
-pytest                          # 27 tests
+pytest                          # 28 tests
 ```
 
 `--sim` runs a simulated living room: two ducks whose batteries drain, who walk when asked and

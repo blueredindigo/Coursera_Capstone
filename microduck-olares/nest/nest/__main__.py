@@ -21,6 +21,8 @@ def main() -> None:
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     cfg = config_module.load(args.config)
+    if args.sim and not cfg.landmarks:
+        cfg.landmarks = dict(config_module.SIM_LANDMARKS)  # a furnished simulated room
     if args.port:
         cfg.web_port = args.port
     asyncio.run(run(cfg, args.sim))

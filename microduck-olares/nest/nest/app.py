@@ -119,6 +119,7 @@ class Nest:
             ctx.my_room_xy = lambda n=name: self.room.duck(n)
             ctx.bed_xy = lambda b=bed: self.room.landmarks.get(b) if b else None
             ctx.nest_xy = self._nest_spot
+            ctx.tell_friend = lambda *a, n=name, **k: self.tell_friend(n, *a, **k)
 
     def _nest_spot(self) -> tuple[float, float] | None:
         """Where "come here" leads: the `nest` landmark if you set one, else 0.8 m out in front
@@ -167,11 +168,18 @@ class Nest:
         client = self.ducks[name]
         while True:
             await client.transport.connected.wait()
-            try:
-                await client.on_connected()
-                self._event(name, f"connected (API v{client.api_version})")
-            except Exception as exc:
-                self._event(name, f"connected, but setup failed: {exc}")
+            delay = 2.0
+            while client.transport.connected.is_set():
+                try:
+                    await client.on_connected()
+                    self._event(name, f"connected (API v{client.api_version})")
+                    break
+                except Exception as exc:
+                    # Without robot.subscribe nothing streams and every walk is refused, so keep
+                    # trying rather than idling on a half-open channel.
+                    self._event(name, f"connected, but setup failed ({exc}); retrying")
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 30.0)
             while client.transport.connected.is_set():
                 await asyncio.sleep(0.5)
             self._event(name, "disconnected")
@@ -303,7 +311,8 @@ class Nest:
                     for item in seen:
                         if item["confidence"] >= cfg.min_confidence:
                             self.record_sighting(name, item["object"], item["relation"],
-                                                 item["landmark"], item["near"])
+                                                 item["landmark"], item["near"],
+                                                 confidence=item["confidence"])
         finally:
             await captioner.close()
 
@@ -375,14 +384,15 @@ class Nest:
     # ── things the Pond (or Home Assistant) can ask for ────────────────────────
 
     def record_sighting(self, duck: str, obj: str, relation: str, landmark: str,
-                        near: str | None = None, tell: bool = True) -> dict[str, Any]:
+                        near: str | None = None, tell: bool = True,
+                        confidence: float = 1.0) -> dict[str, Any]:
         """A duck saw something: into its memory, into its Duckdex, and (maybe) to its friend.
 
         Called by the Pond today; by the vision captioner once Phase 5's model is running."""
         mind = self.minds[duck]
         rumour = mind.memory.where_is(obj)
         credited = rumour.told_by if rumour and rumour.told_by else None
-        sighting = mind.memory.saw(obj, relation, landmark, near)
+        sighting = mind.memory.saw(obj, relation, landmark, near, confidence=confidence)
         meal = mind.duckdex.feed(obj, credited_to=credited)
         if credited and meal == "meal":
             self._event(duck, f"found the {obj}, just where {credited.title()} said!")
@@ -391,7 +401,7 @@ class Nest:
         self._event(duck, f"saw a {obj} {sighting.describe()} ({meal})")
         told = None
         if tell and meal == "meal" and not credited:
-            told = self.tell_friend(duck, "found", obj, relation, landmark, near)
+            told = self.tell_friend(duck, "found", obj, relation, landmark, near, confidence)
         return {"meal": meal, "where": sighting.describe(), "queued_for_friend": told}
 
     def where_is(self, duck: str, obj: str) -> dict[str, Any]:
@@ -409,8 +419,8 @@ class Nest:
         await mind.client.look(1.0, 0.0, 0.5)
         await mind.say("greet")
         if self.gaze and self.room.duck(duck):
-            await self.gaze.look_at_bearing(self.room.bearing_from_reachy(*self.room.duck(duck)),
-                                            antennas="perk")
+            await self._reachy_try("look", self.gaze.look_at_bearing(
+                self.room.bearing_from_reachy(*self.room.duck(duck)), antennas="perk"))
 
     ACTIONS = {
         "come_here": ("come_here", "{duck} is coming over."),
@@ -453,22 +463,31 @@ class Nest:
             mind.asleep = True
             if mind.tiredness.band != Band.CHARGING:
                 mind._start("go_to_bed", go_to_bed(mind))
+        for name in self.minds:
             xy = self.room.duck(name)
             if self.gaze and xy:
-                await self.gaze.look_at_bearing(self.room.bearing_from_reachy(*xy))
-                await self.gaze.wiggle(1)
-        if self.reachy:
-            await self.reachy.goto_sleep()
+                await self._reachy_try("goodnight", self.gaze.look_at_bearing(
+                    self.room.bearing_from_reachy(*xy)))
+                await self._reachy_try("goodnight", self.gaze.wiggle(1))
+        if self.reachy and await self._reachy_try("sleep", self.reachy.goto_sleep()):
             self.reachy_status = "asleep"
         self._event("reachy", "bedtime: goodnight, Ah-Ah and Tee-Tee")
 
+    async def _reachy_try(self, what: str, coroutine) -> bool:
+        """Reachy is a nice extra, never a dependency: a failed move is logged, not raised."""
+        try:
+            await coroutine
+            return True
+        except Exception as exc:
+            self.reachy_status = f"{self.reachy_status.split(' ')[0]} (last {what} failed: {exc})"
+            return False
+
     async def wake(self) -> None:
-        if self.reachy:
-            await self.reachy.wake_up()
-            self.reachy_status = "awake"
         for mind in self.minds.values():
             mind.asleep = False
             mind.interrupt()
+        if self.reachy and await self._reachy_try("wake-up", self.reachy.wake_up()):
+            self.reachy_status = "awake"
         best = max(self.minds.values(), key=lambda m: m.tiredness.percent or 0)
         await best.stand()
         await best.say("greet")

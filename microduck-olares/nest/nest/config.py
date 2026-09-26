@@ -66,6 +66,10 @@ class Config:
 LANDMARK_WORDS = ["sofa", "green chair", "table", "rug", "door", "window", "radiator", "tv stand",
                   "bed", "kitchen", "hallway", "bookshelf", "plant", "cushion"]
 
+# The simulated living room's furniture (`python -m nest --sim` with no config), metres.
+SIM_LANDMARKS = {"sofa": (1.0, 3.2), "green chair": (3.4, 2.6), "tv stand": (2.5, 0.0),
+                 "ah-ah's bed": (2.2, 0.4), "tee-tee's bed": (2.8, 0.4)}
+
 DEFAULT_VOCABULARY = [
     *LANDMARK_WORDS,
     # things

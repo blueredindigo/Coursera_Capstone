@@ -19,6 +19,7 @@ listener answers. The Pond shows the subtitle.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
@@ -110,10 +111,9 @@ class DuckBus:
             # would carry, so the round trip is exercised on every message.
             received = DuckMessage.decode(item.wire, self.vocab)
             if self.perform:
-                try:
-                    await self.perform(item.speaker, item.listener, received)
-                except Exception:
-                    logger.exception("performing a message failed; delivered anyway")
+                # Performed in the background: chirping takes seconds, and the spine that calls
+                # pump() must keep ticking both ducks meanwhile.
+                asyncio.ensure_future(self._perform_safely(item.speaker, item.listener, received))
             delivery = Delivery(item.speaker, item.listener, received, now, evidence,
                                 len(item.wire))
             self.log.append(delivery)
@@ -122,6 +122,12 @@ class DuckBus:
             if self.on_delivered:
                 self.on_delivered(delivery)
         return delivered
+
+    async def _perform_safely(self, speaker: str, listener: str, message: DuckMessage) -> None:
+        try:
+            await self.perform(speaker, listener, message)
+        except Exception:
+            logger.exception("performing a message failed; it was delivered anyway")
 
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
         return [{"speaker": d.speaker, "listener": d.listener, "subtitle": d.message.subtitle(),

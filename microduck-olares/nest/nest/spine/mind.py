@@ -17,6 +17,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
+from ..duck.rpc import RpcError
 from ..world.duckdex import Duckdex
 from ..world.room import Navigator
 from ..world.scene import Memory
@@ -42,6 +43,7 @@ class Context:
     friend_room_xy: Callable[[], tuple[float, float] | None] = lambda: None
     bed_xy: Callable[[], tuple[float, float] | None] = lambda: None
     nest_xy: Callable[[], tuple[float, float] | None] = lambda: None
+    tell_friend: Callable[..., Any] = lambda *args, **kwargs: None
     on_event: Callable[[str, str], None] = lambda duck, text: None
 
 
@@ -70,13 +72,21 @@ class Mind:
         self.sitting = False
         self.events: deque[tuple[float, str]] = deque(maxlen=50)
         self.paused = False  # set by the Pond ("leave Ah-Ah alone for now")
-        self.investigating: str | None = None
         self.asleep = False  # between bedtime and good morning: only sleep
+        self.in_bed = False  # went to bed and hasn't stood up since
+        self._checks: dict[str, float] = {}  # rumours already gone to look at
         self._last_tick = time.monotonic()
         self._last_health = 0.0
+        self._health: asyncio.Task | None = None
         self._petting_s = 0.0
 
     # ── bookkeeping ────────────────────────────────────────────────────────────
+
+    async def _poll_health(self) -> None:
+        try:
+            await self.client.poll_health()
+        except Exception as exc:
+            logger.debug("%s: health poll failed: %s", self.name, exc)
 
     def note(self, text: str) -> None:
         self.events.append((time.time(), text))
@@ -100,12 +110,10 @@ class Mind:
         if not self.client.connected:
             return
 
-        if now - self._last_health > 5.0:
+        if now - self._last_health > 5.0 and not (self._health and not self._health.done()):
             self._last_health = now
-            try:
-                await self.client.poll_health()
-            except Exception as exc:
-                logger.debug("%s: health poll failed: %s", self.name, exc)
+            # In the background: a duck whose RPC hangs must not stall the other duck's tick.
+            self._health = asyncio.ensure_future(self._poll_health())
         before = self.tiredness.band
         band = self.tiredness.update(now, self.client.health.battery_percent,
                                      self.client.health.hottest_c)
@@ -196,7 +204,7 @@ class Mind:
         for name, factor in self.tiredness.cues.prefers.items():
             if name in w:
                 w[name] *= factor
-        if band == Band.VERY_LOW:
+        if band == Band.VERY_LOW and not self.asleep and not self.in_bed:
             w["go_to_bed"] = 5.0
         if self.tiredness.needs_rest_for_heat:
             w = {k: 0.0 for k in w} | {"rest": 1.0}
@@ -206,7 +214,8 @@ class Mind:
         """Something another duck told us about, somewhere we know how to reach, that we have
         not seen for ourselves yet."""
         for sighting in reversed(self.memory.sightings):
-            if sighting.told_by and not sighting.stale and sighting.obj not in self.duckdex.entries:
+            if (sighting.told_by and not sighting.stale and sighting.obj not in self.duckdex.entries
+                    and self._checks.get(sighting.obj, 0) < 2):
                 mark = self.memory.resolve(sighting.landmark)
                 if mark is not None and mark.xy is not None:
                     return sighting, mark
@@ -227,18 +236,29 @@ class Mind:
         except Exception as exc:
             logger.debug("%s: sound %s failed: %s", self.name, tag, exc)
 
+    async def _toggle_sit(self, sitting: bool) -> None:
+        # The flag follows the request, set before awaiting it: a behaviour cancelled while the
+        # call is in flight still sent the toggle, and the robot still carries it out. Only an
+        # answered refusal means it did not happen.
+        self.sitting = sitting
+        try:
+            result = await self.client.do("sit_toggle")
+        except RpcError:
+            self.sitting = not sitting
+            raise
+        if isinstance(result, dict) and result.get("accepted") is False:
+            self.sitting = not sitting
+        await asyncio.sleep(2.0)
+
     async def stand(self) -> None:
         if self.sitting:
-            await self.client.do("sit_toggle")
-            self.sitting = False
-            await asyncio.sleep(2.0)
+            await self._toggle_sit(False)
+        self.in_bed = False
 
     async def sit(self) -> None:
         if not self.sitting:
             await self.client.stop()
-            await self.client.do("sit_toggle")
-            self.sitting = True
-            await asyncio.sleep(2.0)
+            await self._toggle_sit(True)
 
     async def hold_head(self, pitch: float, seconds: float, yaw: float = 0.0) -> None:
         """Hold a head pose. Head intents are continuous, so resend them."""
@@ -326,6 +346,7 @@ async def go_to_bed(m: Mind) -> None:
         arrived = await m.go_to(bed)
         m.note("in bed" if arrived else "couldn't reach the bed: sleeping where it is")
     await m.sit()
+    m.in_bed = True
     await m.hold_head(-0.35, 30.0)
 
 
@@ -422,8 +443,17 @@ async def investigate(m: Mind) -> None:
         m.note(f"couldn't get to the {mark.name}")
     # Whether it is really there is decided by what the duck sees: the captioner (Phase 5) or
     # you, in the Pond, recording the sighting. Either credits the Duckdex entry to the teller.
-    m.investigating = sighting.obj
-    await asyncio.sleep(5.0)
+    # Give the eyes (the captioner, or you in the Pond) a moment to report it.
+    await asyncio.sleep(8.0)
+    if sighting.obj in m.duckdex.entries:
+        return  # found: record_sighting has credited the teller
+    tries = m._checks.get(sighting.obj, 0) + (1 if arrived else 0.5)
+    m._checks[sighting.obj] = tries
+    if arrived:
+        m.memory.gone(sighting.obj)
+        m.note(f"the {sighting.obj} wasn't {sighting.describe()}")
+        m.ctx.tell_friend("gone", sighting.obj, sighting.relation, sighting.landmark,
+                          sighting.near)
 
 
 async def come_here(m: Mind) -> None:
