@@ -46,6 +46,7 @@ app, a gamepad or your own script.
 | Gaze, head, mouth | `robot.look` (point in space), `robot.head`, `robot.mouth` | attention, curiosity, expressions |
 | Skills (ONNX policies) | `robot.do`, `robotctl policy add/load` | walk, sit, kick, roulade, ground-pick, get up, plus anything you train |
 | Locomotion | `robot.move`, `robot.mode` (walk vs roller) | wandering, following, fetching |
+| **NFC, two antennas: head and beak** (per Pollen's press kit; no software interface in the public repo yet) | awaiting a Pollen interface | the beak "sniffs" tagged objects, the head reads cards you hold to it (§11) |
 | Odometry (legs + IMU) | `odometry` crate, fed to `robotd` | short-range "where did I walk" |
 | State and battery | `robot.state` (battery, thermals, loop health), `robot.subscribe` | the tiredness gauge, self-monitoring |
 
@@ -536,36 +537,79 @@ two topping up at the Nest.
   ducks can play all afternoon instead of sitting on the charger.
 - **Longer walkies.** A charged spare in your bag roughly doubles the time a field trip can
   last.
-- **Battery health diary.** Put an NFC tag on each pack (below). The Jetson logs which pack is in
+- **Battery health diary.** Put a cheap NFC sticker on each pack and log swaps with your phone
+  (below). The Jetson logs which pack is in
   which duck and learns each pack's discharge curve from `robot.state`. Eventually you'll get
   "Pack C is getting tired, fewer minutes per charge", and battery wear stops being a surprise.
 - **Safety, since these are 2S LiPo packs.** Charge on a non-flammable surface or in a LiPo bag,
   never unattended overnight, and store spares at storage charge if they won't be used for a
   while. Don't let charging become a night-time job: the Nest's night is for sleeping.
 
-### NFC tags: physical buttons for pet life
+### NFC: the duck's sense of touch-and-smell
 
-The ducks don't have NFC readers, so the reader is either **your phone** (Home Assistant's
-companion app scans tags and sends the event to your local Home Assistant, still on the LAN) or
-a **USB NFC reader on the Jetson** at the Nest (an ACR122U or PN532 board). A suggested use for
-the ten:
+**Correction to earlier versions of this plan:** the Microduck *does* have NFC. Pollen's press
+kit lists **two NFC antennas, one in the head and one in the beak**, and says tagged objects
+brought close can trigger specific moves. The dev pack includes the 10 tags, and the separate
+accessory pack adds an "NFC polaroid" prop and ten more tags.
 
-| Tags | Where | Tap to… |
-|---|---|---|
-| 4 | one on each battery pack (A–D) | log a pit stop: which pack went into which duck (battery health diary) |
-| 1 | the front door | **start walkies** (the traveller switches to recorder mode, Reachy goes to "wait by the door"). Tap again on return to start **homecoming** |
-| 1 | the novelty feeder | serve a treat now (a "feed" button for when you want to watch) |
-| 1 | the TV stand | start the **bedtime ritual** |
-| 1 | a "game box" | start a game. Each tap cycles: red light green light → Simon says → treasure hunt |
-| 1 | the spare-parts box | log a **surgery** (which duck, which joint, which spare) and lower the spares count |
-| 1 | a laminated **postcard** of a favourite trip photo | replay that trip's slideshow on the TV |
+**What's not public yet:** the open-source `microduck` repo (checked at commit `a9ec4b2`,
+23 Sep 2026) has no NFC daemon, no `nfc.*` RPC and no NFC config key. The press kit doesn't say
+how NFC is exposed to software, either. So the plan assumes Pollen will expose tag reads (for
+example a notification carrying the tag ID and which antenna saw it). Until then, the ideas below
+are designed but not buildable. When the interface lands, **Phase 5 is where it plugs in**. If
+it's slow to arrive, it's a good thing to ask Pollen about or contribute.
 
-NTAG213 stickers are cheap, so once you're hooked, more postcards and toy tags are easy.
+NFC range is a few centimetres, so the two antennas mean two different senses:
 
-**Wild idea (hardware hack):** a tiny NFC reader in a duck's beak. The ground-pick skill already
-puts the beak on the floor, so a duck could "sniff" tagged toys and treasure. It needs a small
-board wired to the Radxa and a separate reader service, so it's a real modification, but a
-treasure hunt where the ducks literally sniff out hidden tags would be magical.
+- **The beak is a nose.** With the ground-pick skill the beak touches the floor, so the duck can
+  **sniff** a tagged object before picking it up, and confirm it's holding the right one.
+- **The head is for touch.** You hold a tagged card to the duck's head and it reacts, the way
+  you'd show a pet a treat. That makes cards tapped on the head the most natural "buttons" in
+  the house: no phone and no extra reader needed.
+
+**What NFC adds to the pet:**
+
+- **Picking up the correct item.** "Tee-Tee, bring the yellow ball." The camera finds
+  ball-shaped candidates, the beak sniffs each one, and only the right ID gets picked up. It's
+  real fetch-by-name.
+- **Treasure hunts by smell.** Hide tagged tokens under cushions. The ducks search by sight,
+  then confirm by sniffing, and whoever sniffs it first tells the other where it was found.
+- **Objects the ducks truly know.** Vision can confuse two yellow balls, but a tag can't. Tagged
+  toys become named companions in the Duckdex ("Ball #3, Ah-Ah's favourite"), with a history of
+  where each was found and who played with it.
+- **Self-labelled training data.** Each time the beak reads a tag, the Jetson saves the camera
+  frame paired with that ID, on the LAN. Over weeks that becomes a dataset for training a small
+  **personal object detector** for *your* toys on Olares, better than any generic model.
+- **Sim-to-real in the dojo.** In MuJoCo, give simulated objects IDs and train "pick up the
+  object with ID X among several". On the real duck, the beak reading is a **ground-truth
+  check** of success: right tag in the beak means success, wrong tag means a miss. The test
+  pen can then score pick-up skills automatically, the same keep-or-roll-back loop as gaits.
+- **Feeding you can verify.** With a tag under each feeder compartment, the beak confirms which
+  "dish" the duck ate from, so the Duckdex never mixes up what it tasted.
+- **Social sniffing (to test, not promised).** Whether one duck's beak can read anything from
+  the other's head depends on how Pollen drives the antennas. If it only reads passive tags, a
+  small tag sticker on each duck's head gives the same effect: a "beak boop" greeting where
+  each duck knows who it touched.
+
+**A suggested use for the ten dev-kit tags:**
+
+| Tags | Where | Read by | Does |
+|---|---|---|---|
+| 3 | favourite toys (the yellow ball, a plush, a block) | beak | named toys: fetch-by-name, pick the correct item, toy history |
+| 2 | treasure tokens | beak | treasure hunts by smell |
+| 1 | under the feeder | beak | confirms feeding. Add more stickers later for one per compartment |
+| 1 | **walkies card** | head | tap on a duck's head at the door: *that* duck goes on the outing (recorder mode, Reachy "waits by the door"). Tap again on return for **homecoming** |
+| 1 | **bedtime card** | head | starts the bedtime ritual |
+| 1 | **game card** | head | starts a game. Each tap picks the next: red light green light, Simon says, treasure hunt |
+| 1 | **postcard** of a favourite trip photo | head | replays that trip's slideshow on the TV, and the duck that took it gets excited |
+
+**Home bookkeeping moves to cheap extra stickers and your phone.** Battery packs A–D and the
+spare-parts box are logged by tapping them with your phone (Home Assistant's companion app
+reads NFC and reports to your local Home Assistant), so the duck's ten tags stay for play.
+NTAG213 stickers are cheap if you want more toys and postcards.
+
+**If you get the accessory pack,** the NFC polaroid is a perfect "photo card": hold it to a
+duck's head to show it a memory.
 
 ### Hugging Face credit: cloud muscle without home data
 
@@ -591,7 +635,7 @@ without it.
   "preening" session where you check and tighten screws is the duck equivalent of grooming.
   The vet check's asymmetric-gait warning should suggest "check the screws" before "replace the
   motor".
-- **Mounting the Nest:** the feeder, the NFC reader, charger cradles, and a small shelf for the
+- **Mounting the Nest:** the feeder, charger cradles, and a small shelf for the
   spares box.
 
 ---
@@ -611,7 +655,9 @@ plan is lost.
   in `robotctl configure` on both ducks.
 - Noctua fans and a GPU power cap on Olares. Home Assistant from Olares Market.
 - Set up **the Nest** on the TV stand: Reachy, the Jetson, the dual charger, two bed spots, and
-  a box for spares and tools. Label the four battery packs A–D with NFC tags.
+  a box for spares and tools. Label the four battery packs A–D with cheap NFC stickers (read by
+  your phone). Tag the three favourite toys and make the walkies, bedtime, game and postcard
+  cards.
 - Check the three spare motors' firmware (v46+).
 - Milestone: every device answers from the Jetson, and the Nest exists physically.
 
@@ -633,8 +679,9 @@ plan is lost.
 - Needs/mood tick at 1 Hz per duck, state in SQLite or Redis, and the safety supervisor.
 - The **battery-to-tiredness gauge** with its visual cues, Reachy's antenna droop, and "go to
   bed" docking using the tags.
-- **Pit stops**, logged by NFC tap, and the **battery health diary**.
-- The **bedtime and wake-up rituals** (NFC tag on the TV stand).
+- **Pit stops**, logged by a phone tap on the pack, and the **battery health diary**.
+- The **bedtime and wake-up rituals** (the bedtime card on a duck's head, once NFC is exposed;
+  a button in the Pond until then).
 - **Personalities from voice seeds.**
 - Milestone: left alone for an hour, both do believable things. When the battery runs low they
   look tired and go to their bed spots, and a pit stop brings them back.
@@ -649,8 +696,9 @@ plan is lost.
 **Phase 5: eyes, memory and food**
 - Captions from the small VLM on the Jetson, the **Duckdex**, **curiosity is food**, and object
   sightings pinned to landmarks.
-- Build and wire the **novelty feeder** from the spare motor and cables, with its NFC "feed"
-  tag.
+- Build and wire the **novelty feeder** from the spare motor and cables, with a tag under it.
+- **NFC, once Pollen exposes it:** named toys, beak sniffing, feeding confirmation, and
+  camera-frame + tag-ID pairs saved to start the personal object dataset.
 - Milestone: show Ah-Ah a ball, move it behind the chair, and the Pond shows "yellow ball:
   behind the green chair". The feeder serves Tee-Tee a pinecone, and it's a new Duckdex entry.
 
@@ -661,8 +709,9 @@ plan is lost.
 - Milestone: Ah-Ah finds the yellow ball, tells Tee-Tee, and Tee-Tee goes and finds it.
 
 **Phase 7: games**
-- The NFC **game box** tag, and Reachy as referee.
-- **Red light, green light**, **Simon says**, **treasure hunt**, **where's the duck?**,
+- The **game card** (tapped on a duck's head), and Reachy as referee.
+- **Red light, green light**, **Simon says**, **treasure hunt** (by sight, then by beak sniffing), **fetch-by-name** with the correct tagged toy,
+  **where's the duck?**,
   **fetch** (the feeder rolls the ball), **tidy-up scouting**, **rumours**, and **gifts**
   brought to the sofa.
 - **Door greeting** via Home Assistant presence.
@@ -671,11 +720,14 @@ plan is lost.
 **Phase 8: health, the dojo and the hospital**
 - The **weekly vet check** in the test pen: gait, speed, servo temperatures and falls against
   each duck's baseline.
-- **Surgery day** with the spare motors (one at a time), NFC-logged, with a post-op recovery
+- **Surgery day** with the spare motors (one at a time), logged with a phone tap on the spares box, with a post-op recovery
   walk. Monthly **grooming** with the screwdriver.
 - **The dojo:** train (on Olares while you're out, or on Hugging Face credit with simulated data
   only), validate in `duck-sim`, run test-pen trials in Reachy's view, keep or roll back, and
   **teach the other duck**. Aim for running.
+- **NFC-scored pick-up skills:** train "pick the object with ID X" in MuJoCo, and let the beak's
+  tag read score the real trials automatically.
+- Train the **personal object detector** on Olares from the tag-labelled frames.
 - Milestone: the vet check catches something real before it breaks, and one duck learns a new
   move.
 
@@ -688,15 +740,15 @@ plan is lost.
 - Milestone: you hear Ah-Ah tell Tee-Tee where the ball is, and Tee-Tee goes.
 
 **Phase 10: field trips**
-- **Tier 1 walkies** with the on-duck recorder, started and ended by the NFC door tag, with a
-  spare battery in the bag.
+- **Tier 1 walkies** with the on-duck recorder, with a
+  spare battery in the bag, started and ended by the walkies card tapped on the traveller's head.
 - **Homecoming**, trip processing on Olares, the **Wild Duckdex**, **wanderlust** and taking
-  turns, **slideshow night** on the TV, NFC **postcards**, and souvenirs for the feeder.
+  turns, **slideshow night** on the TV, NFC **postcards** held to a duck's head, and souvenirs for the feeder.
 - Outdoor-terrain training in the dojo, then the **Tier 2 expedition kit**.
 - Milestone: after a walk, the stay-home duck "tastes" a leaf from the feeder and watches the
   slideshow.
 
-**Later: human speech** (§13) and the **NFC beak** hardware hack.
+**Later: human speech** (§13), and **social beak boops** if the antennas allow it.
 
 ---
 
@@ -735,3 +787,6 @@ On hold until the foundation works well. Kept here so nothing's lost:
   overnight, and store spares at storage charge.
 - **Surgery is one servo at a time.** `robotd` only auto-adopts a replacement when exactly one
   ID is missing.
+- **NFC is hardware today, software later.** Pollen lists two NFC antennas (head and beak), but
+  the public repo has no NFC interface yet. Build the NFC ideas against whatever Pollen exposes,
+  and don't hack a reader service onto the robot image, because the updater replaces it.
