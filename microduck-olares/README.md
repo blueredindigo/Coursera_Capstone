@@ -761,7 +761,7 @@ plan is lost.
 - **M2:** the 9 AprilTags and your walkthrough. First Gaussian map per room on Olares, and the
   floor grid seeded from it.
 - **M3:** the ducks' ToF building the floor grid, and scout-pose snapshots with positions.
-  Doors, thresholds and the balcony fence.
+  Doors, thresholds and the balcony's glass line.
 - **M4:** exploration mode: frontiers, sorties with battery and drift budgets, and the two ducks
   splitting the flat.
 - **M5:** render-and-compare change detection, fog that fades differently for each kind of
@@ -872,11 +872,11 @@ food for curiosity.
   cross yet". That's a dojo goal (§7): learning to step over it is growing up.
 - **Bathrooms.** Wet tiles make feet slip, which makes position drift. Each bathroom gets its
   own anchor tag inside (below), and the ToF drop check stays on around the shower tray.
-- **The balcony is allowed, with a fence.** It's the one place where a mistake means a fall
-  from height. A **virtual fence** 30 cm inside the railing line is drawn from the walkthrough.
-  The duck's own ToF edge check stays on underneath it. It's daytime only, and only when the
-  balcony door is open. **If the railing has gaps wider than a duck, add a mesh along the bottom
-  before the balcony goes on the map.**
+- **The balcony is fully on the map.** It has a uniform glass barrier with no gaps, so there's
+  nothing to fall through, and no virtual fence is needed. The glass is a wall to the ducks'
+  feet, but a window to their eyes: the ToF can miss clear glass, so the walkthrough marks the
+  barrier line and the grid treats it as solid. The ducks go out in the daytime whenever the
+  balcony door is open, and the door sill is the only thing to learn (above).
 
 ### Knowing where a duck is: anchors
 
@@ -937,7 +937,7 @@ On Olares, in the daytime:
   the floor plane.
 - Train one splat per room with gsplat.
 - Project the result onto the floor to seed layer 1: walls, doorways, furniture footprints, the
-  balcony railing line.
+  balcony's glass barrier.
 - Label the rooms by which tags are in them.
 
 The walkthrough seeds the map with where things are. After that, the ducks keep it true.
