@@ -15,14 +15,15 @@ Ground rules:
 1. **The robot's own software has the final say on movement.** Anything off-board proposes
    intent. The duck's controller and its safety checks decide how to move, or whether to.
 2. **LAN only.** No cloud rendezvous, no relay, no hosted models. If the internet goes down,
-   nothing about Ah-Ah and Tee-Tee changes.
+   nothing about Ah-Ah and Tee-Tee changes. The one optional exception is the kit's Hugging
+   Face credit for training on *simulated* data (§11). Nothing from inside the home goes up.
 3. **No simulated age or handicaps.** They always use the best gait available at full speed,
    and grow in **knowledge and skills**. The long-term aim is for them to run.
 4. **Tiredness is a battery gauge you can see.** A duck that's low on battery looks tired, so
    you know to charge it without opening an app.
 5. **Quiet at night.** Olares can idle. The always-on work runs on the silent Jetson.
 6. **Foundation first.** Human speech (talking to the ducks, the ducks talking to you) is
-   **parked** until the foundation below works well (§12).
+   **parked** until the foundation below works well (§13).
 
 ---
 
@@ -476,60 +477,230 @@ as the battery gauge outside, so when it starts yawning, head home.
 
 ---
 
-## 11. Build plan: foundation first
+## 11. The dev kit: parts become part of the story
 
-**Phase 0: plumbing (one evening)**
+The kit has 3 spare motors, 5 motor cables, 2 batteries, a dual charger, 10 NFC tags, Hugging
+Face credit, a screwdriver and a screw pack. Every item can be useful *and* part of pet life.
+
+### Spare motors and cables: the duck hospital
+
+The Microduck's servos are **Dynamixel XL330s**, 15 per duck. The robot's software makes a swap
+easy. From `docs/design/robotd-design.md`: a new XL330 comes up as ID 1, and at start-up
+`robotd` pings the fifteen expected IDs. If **exactly one** is missing, it finds the new servo,
+gives it the missing ID and the bus speed, checks its registers and reboots it. You swap the
+motor, power on, and the duck adopts it.
+
+- **Surgery day.** When the weekly vet check (§10) flags a servo (running hot, a joint that
+  lags, a knee that no longer matches the other), that's surgery. Reachy plays the nurse and
+  watches, the duck is "put to sleep" (`robot.shutdown`), you swap the motor, and it wakes up
+  and does a gentle recovery walk in the test pen before it's allowed to play. The diary says
+  "Tee-Tee got a new left knee", and the Pond keeps a medical history per joint.
+- **One at a time, always.** Auto-adoption only works when exactly one servo is missing. With
+  two missing, `robotd` leaves them alone because it can't tell which is which. Never replace
+  two motors in one session.
+- **Firmware check.** `robotd` reads the bus with fast sync read, which needs **XL330 firmware
+  v46 or later**. Check a spare's firmware (e.g. with ROBOTIS's Dynamixel Wizard and a USB
+  adapter) before surgery day, not during it.
+- **Keep two spares for repairs.** With two ducks and 30 servos between them, and the knees
+  and ankles working hardest, two spares is a sensible hospital stock.
+- **Spare cables** are for repairs first. A cable that's worn at a joint is a classic cause of
+  "random" servo dropouts, so the vet check should suggest reseating or replacing the cable
+  before blaming the motor.
+- **The third spare builds a Nest gadget** (below). Reachy Mini's head also uses XL330-family
+  motors, so check the exact variant (M288 vs M077) before assuming a spare fits Reachy, and
+  don't open Reachy's bus for gadgets.
+
+### A Nest gadget from the spare motor: the novelty feeder
+
+A **rotating feeder**: a small turntable with 4–6 compartments, each holding one small,
+interesting object (a pinecone, a toy car, a shell, a bottle cap). One XL330 turns it, driven
+from the Jetson through a small USB-to-Dynamixel adapter (a ROBOTIS U2D2 or similar; not in the
+kit). Use the spare cables to wire it, and the screw pack to mount it.
+
+- It's the tamagotchi **food bowl** made literal. Curiosity is hunger, and the feeder serves
+  a new object when a duck is hungry for novelty, but only a few times a day.
+- The duck walks up, looks, the VLM names the object, and it goes into the Duckdex.
+- You restock it weekly with new things. Objects from **field trips** (a leaf, a stone from the
+  walk) are the best food: the duck that stayed home gets to "taste" the outing.
+- The same motor can also **roll a ball out** for fetch, or raise a little **flag** when a
+  game ends. One motor, one gadget at a time.
+
+### Batteries and the dual charger: pit stops and battery health
+
+With the two kit batteries, you have **four packs for two ducks**, and the dual charger keeps
+two topping up at the Nest.
+
+- **Pit stops.** When a duck is very tired, it walks to the Nest. You swap its pack in under a
+  minute (after `robot.shutdown`, since the duck sits and powers off first) and it wakes
+  "refreshed" with a satisfied `coo`. That's a real tamagotchi **meal time**, and it means the
+  ducks can play all afternoon instead of sitting on the charger.
+- **Longer walkies.** A charged spare in your bag roughly doubles the time a field trip can
+  last.
+- **Battery health diary.** Put an NFC tag on each pack (below). The Jetson logs which pack is in
+  which duck and learns each pack's discharge curve from `robot.state`. Eventually you'll get
+  "Pack C is getting tired, fewer minutes per charge", and battery wear stops being a surprise.
+- **Safety, since these are 2S LiPo packs.** Charge on a non-flammable surface or in a LiPo bag,
+  never unattended overnight, and store spares at storage charge if they won't be used for a
+  while. Don't let charging become a night-time job: the Nest's night is for sleeping.
+
+### NFC tags: physical buttons for pet life
+
+The ducks don't have NFC readers, so the reader is either **your phone** (Home Assistant's
+companion app scans tags and sends the event to your local Home Assistant, still on the LAN) or
+a **USB NFC reader on the Jetson** at the Nest (an ACR122U or PN532 board). A suggested use for
+the ten:
+
+| Tags | Where | Tap to… |
+|---|---|---|
+| 4 | one on each battery pack (A–D) | log a pit stop: which pack went into which duck (battery health diary) |
+| 1 | the front door | **start walkies** (the traveller switches to recorder mode, Reachy goes to "wait by the door"). Tap again on return to start **homecoming** |
+| 1 | the novelty feeder | serve a treat now (a "feed" button for when you want to watch) |
+| 1 | the TV stand | start the **bedtime ritual** |
+| 1 | a "game box" | start a game. Each tap cycles: red light green light → Simon says → treasure hunt |
+| 1 | the spare-parts box | log a **surgery** (which duck, which joint, which spare) and lower the spares count |
+| 1 | a laminated **postcard** of a favourite trip photo | replay that trip's slideshow on the TV |
+
+NTAG213 stickers are cheap, so once you're hooked, more postcards and toy tags are easy.
+
+**Wild idea (hardware hack):** a tiny NFC reader in a duck's beak. The ground-pick skill already
+puts the beak on the floor, so a duck could "sniff" tagged toys and treasure. It needs a small
+board wired to the Radxa and a separate reader service, so it's a real modification, but a
+treasure hunt where the ducks literally sniff out hidden tags would be magical.
+
+### Hugging Face credit: cloud muscle without home data
+
+This is the one item that touches the cloud, so the rule is: **nothing from inside the home
+ever goes up.** Within that, it's genuinely useful:
+
+- **Quiet training.** Reinforcement-learning runs in `microduck_rl` use only *simulated* data.
+  Running the big dojo sweeps (running gait, gravel, grass) on Hugging Face GPUs keeps Olares
+  cool and quiet, and only the finished ONNX policy comes home. It then still goes through
+  `duck-sim`, the test pen and rollback, exactly as before.
+- **Try before you host.** Compare vision models on public images to choose which small VLM
+  to run on the Jetson, before downloading anything.
+- **Share skills, if you want.** `robotctl policy search` finds community policies on the Hub.
+  A running gait Ah-Ah learned could become one other Microduck owners can install. Only the
+  policy file is shared, never footage.
+
+If you'd rather keep even simulation training at home, the credit is optional: the plan works
+without it.
+
+### Screwdriver and screw pack: the maintenance ritual
+
+- **Monthly grooming.** Servo horns and frame screws loosen with walking. A monthly
+  "preening" session where you check and tighten screws is the duck equivalent of grooming.
+  The vet check's asymmetric-gait warning should suggest "check the screws" before "replace the
+  motor".
+- **Mounting the Nest:** the feeder, the NFC reader, charger cradles, and a small shelf for the
+  spares box.
+
+---
+
+## 12. Build plan: foundation first, then everything
+
+Each phase has a milestone you can see. Ideas are listed where they fit, so nothing from this
+plan is lost.
+
+**Phase 0: plumbing and the Nest (a weekend)**
 - Name the ducks: `sudo robotctl system set-name ah-ah` and `sudo robotctl system set-name tee-tee`.
   Every board flashed from one image is called `radxa-zero3`, so they'll collide otherwise.
-- Put the ducks, the Jetson and Olares on the same LAN, with Reachy Lite plugged into the
-  Jetson. From the Jetson, both `curl http://ah-ah.local:8080/frame -o f.png` and
+- Put the ducks, the Jetson and Olares on the same LAN, and plug Reachy Lite into the Jetson
+  by USB. From the Jetson, both `curl http://ah-ah.local:8080/frame -o f.png` and
   `curl http://localhost:8000/api/state/full` should work (or use duck IPs from `duckctl ip`).
 - Enable the duck detector (`[duck_detector] enabled`) and chorale consent (`[chorale] accept`)
   in `robotctl configure` on both ducks.
-- Noctua fans and a GPU power cap on Olares.
+- Noctua fans and a GPU power cap on Olares. Home Assistant from Olares Market.
+- Set up **the Nest** on the TV stand: Reachy, the Jetson, the dual charger, two bed spots, and
+  a box for spares and tools. Label the four battery packs A–D with NFC tags.
+- Check the three spare motors' firmware (v46+).
+- Milestone: every device answers from the Jetson, and the Nest exists physically.
 
 **Phase 1: the Jetson talks to everyone**
 - One Python service in Docker on the Jetson. For the ducks, reuse
   `spaces/shared/control.py` (`Rpc`) over the WebRTC control lane via `ws://<duck>:8443`. For
-  Reachy Lite, plug it into the Jetson by USB, run its daemon there, and use the `reachy_mini`
-  SDK or `http://localhost:8000/api`.
+  Reachy Lite, run its daemon on the Jetson and use the `reachy_mini` SDK or
+  `http://localhost:8000/api`.
 - Milestone: a web page button makes Ah-Ah turn and `greet` while Reachy looks at it.
 
 **Phase 2: seeing the room**
-- The duck detector plus a furniture/object detector on Reachy's camera frames. Reachy's head
-  follows the ducks. Build the living-room landmark map.
+- The duck detector plus a furniture/object detector on Reachy's camera frames, and printed
+  tags on the chargers, beds and toys.
+- Reachy's **overseer gaze**: its head follows whichever duck is doing something interesting.
+- Build the living-room landmark map.
 - Milestone: the Pond shows a live top-down sketch of the room with both ducks on it.
 
-**Phase 3: the spine and the tiredness gauge**
-- Needs/mood tick at 1 Hz per duck, state in SQLite or Redis, the safety supervisor, and the
-  battery-to-tiredness mapping with its visual cues and Reachy's antenna droop.
-- Milestone: left alone for an hour, both do believable things, and when the battery runs low
-  they look tired and go to their bed spots.
+**Phase 3: the spine, tiredness and the Nest routines**
+- Needs/mood tick at 1 Hz per duck, state in SQLite or Redis, and the safety supervisor.
+- The **battery-to-tiredness gauge** with its visual cues, Reachy's antenna droop, and "go to
+  bed" docking using the tags.
+- **Pit stops**, logged by NFC tap, and the **battery health diary**.
+- The **bedtime and wake-up rituals** (NFC tag on the TV stand).
+- **Personalities from voice seeds.**
+- Milestone: left alone for an hour, both do believable things. When the battery runs low they
+  look tired and go to their bed spots, and a pit stop brings them back.
 
-**Phase 4: eyes and memory**
-- Captions from the small VLM on the Jetson, the Duckdex, and object sightings pinned to
-  landmarks.
+**Phase 4: the Pond and the TV pond**
+- The **Pond dashboard** on Olares (via LarePass): needs bars with real battery %, Reachy's view,
+  the map, diaries, and battery and medical history.
+- The **TV tamagotchi screen**: pixel-art Ah-Ah and Tee-Tee mirroring the real ducks.
+- **Daily wishes**, shown on both.
+- Milestone: a glance at the TV tells you how both ducks are doing.
+
+**Phase 5: eyes, memory and food**
+- Captions from the small VLM on the Jetson, the **Duckdex**, **curiosity is food**, and object
+  sightings pinned to landmarks.
+- Build and wire the **novelty feeder** from the spare motor and cables, with its NFC "feed"
+  tag.
 - Milestone: show Ah-Ah a ball, move it behind the chair, and the Pond shows "yellow ball:
-  behind the green chair".
+  behind the green chair". The feeder serves Tee-Tee a pinecone, and it's a new Duckdex entry.
 
-**Phase 5: telling each other**
+**Phase 6: telling each other, and the social life**
 - The duck bus with the earshot rule and the chirp-phrase performance.
+- **Recognition and friendship scores**, **follow the leader / conga**, **separation anxiety**
+  and reunions, and **spontaneous duets** with Reachy swaying along.
 - Milestone: Ah-Ah finds the yellow ball, tells Tee-Tee, and Tee-Tee goes and finds it.
 
-**Phase 6: the stretch goal and the dojo, in parallel**
-- ggwave step 1 with Reachy, then ducks listening, then (with an upstream change) ducks speaking.
-- Training, `duck-sim` validation, test-pen trials in Reachy's view, keep or roll back.
-- Upstream proposals to Pollen: raw audio playback on the duck, a shared mic stream, and the
-  spine itself as the missing autonomous brain.
+**Phase 7: games**
+- The NFC **game box** tag, and Reachy as referee.
+- **Red light, green light**, **Simon says**, **treasure hunt**, **where's the duck?**,
+  **fetch** (the feeder rolls the ball), **tidy-up scouting**, **rumours**, and **gifts**
+  brought to the sofa.
+- **Door greeting** via Home Assistant presence.
+- Milestone: an evening of red light, green light that makes you laugh.
 
-**Phase 7: field trips**
-- Tier 1 walkies with the on-duck recorder, homecoming, trip processing on Olares, the Wild
-  Duckdex and slideshow night. Then outdoor-terrain training in the dojo, and later the Tier 2
-  expedition kit.
+**Phase 8: health, the dojo and the hospital**
+- The **weekly vet check** in the test pen: gait, speed, servo temperatures and falls against
+  each duck's baseline.
+- **Surgery day** with the spare motors (one at a time), NFC-logged, with a post-op recovery
+  walk. Monthly **grooming** with the screwdriver.
+- **The dojo:** train (on Olares while you're out, or on Hugging Face credit with simulated data
+  only), validate in `duck-sim`, run test-pen trials in Reachy's view, keep or roll back, and
+  **teach the other duck**. Aim for running.
+- Milestone: the vet check catches something real before it breaks, and one duck learns a new
+  move.
+
+**Phase 9: sound (the stretch goal)**
+- ggwave step 1 with Reachy (works today), then the ducks listening (shared mic), then the ducks
+  speaking (an upstream raw-playback change). Reachy overhears the gossip.
+- A **shared dialect** of chirp phrases emerges from their gossip.
+- Upstream proposals to Pollen: raw audio playback, a shared mic stream, and the spine as the
+  missing autonomous brain.
+- Milestone: you hear Ah-Ah tell Tee-Tee where the ball is, and Tee-Tee goes.
+
+**Phase 10: field trips**
+- **Tier 1 walkies** with the on-duck recorder, started and ended by the NFC door tag, with a
+  spare battery in the bag.
+- **Homecoming**, trip processing on Olares, the **Wild Duckdex**, **wanderlust** and taking
+  turns, **slideshow night** on the TV, NFC **postcards**, and souvenirs for the feeder.
+- Outdoor-terrain training in the dojo, then the **Tier 2 expedition kit**.
+- Milestone: after a walk, the stay-home duck "tastes" a leaf from the feeder and watches the
+  slideshow.
+
+**Later: human speech** (§13) and the **NFC beak** hardware hack.
 
 ---
 
-## 12. Parked for later: human speech
+## 13. Parked for later: human speech
 
 On hold until the foundation works well. Kept here so nothing's lost:
 
@@ -544,7 +715,7 @@ On hold until the foundation works well. Kept here so nothing's lost:
 
 ---
 
-## 13. Gotchas
+## 14. Gotchas
 
 - **Keep the language model off the motors.** It proposes and the duck's own controller
   decides. Refuse `robot.move` goals toward edges or drops flagged by ToF.
@@ -560,3 +731,7 @@ On hold until the foundation works well. Kept here so nothing's lost:
 - **Upstream changes are real changes.** Raw playback and a shared mic on the duck each need a
   small addition to the Microduck software. Propose them to Pollen rather than patching the
   robot image, because the updater replaces anything local on the next release.
+- **LiPo packs deserve respect.** Charge them on a non-flammable surface, never unattended
+  overnight, and store spares at storage charge.
+- **Surgery is one servo at a time.** `robotd` only auto-adopts a replacement when exactly one
+  ID is missing.
